@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Fencing Scores - Android App for Fencing Pool Management
+  ~ Copyright (C) 2026
+  ~ 
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  -->
+<resources>
+    <string name="app_name">Fencing Scores</string>
+    <string name="participant_name_hint">Enter participant name</string>
+    <string name="bout_result_title">Bout Result</string>
+    <string name="edit_name_title">Edit Participant Name</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="reset">Reset</string>
+    <string name="select">Select...</string>
+</resources>

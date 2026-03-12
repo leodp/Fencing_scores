@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Simple vectorial fencer icon with extended arm and epee
+  ~ Copyright (C) 2026
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background circle -->
+    <path
+        android:fillColor="#FF6200EA"
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"/>
+    
+    <!-- Fencer's head -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,25m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"/>
+        
+    <!-- Fencer's mask -->
+    <path
+        android:fillColor="#333333"
+        android:pathData="M29,22 Q29,18 35,18 Q41,18 41,22 L41,28 Q35,32 29,28 Z"/>
+    
+    <!-- Fencer's body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,32 L40,32 L42,55 L28,55 Z"/>
+    
+    <!-- Fencer's legs -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,55 L25,75 L28,75 L32,55"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,55 L42,75 L45,75 L40,55"/>
+    
+    <!-- Fencer's extended arm (right arm) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,35 L65,30 L67,33 L42,38 Z"/>
+    
+    <!-- Fencer's other arm (left arm, bent) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,35 L22,40 L20,37 L28,32 Z"/>
+    
+    <!-- Epee blade (long thin line) -->
+    <path
+        android:fillColor="#C0C0C0"
+        android:pathData="M65,30 L85,25 L85,27 L65,32 Z"/>
+    
+    <!-- Epee guard -->
+    <path
+        android:fillColor="#C0C0C0"
+        android:pathData="M65,31m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    
+    <!-- Epee handle -->
+    <path
+        android:fillColor="#8B4513"
+        android:pathData="M62,30 L65,31 L62,32 L59,31 Z"/>
+    
+</vector>

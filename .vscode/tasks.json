@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Assemble Release APK (no actionable tasks)",
+			"type": "shell",
+			"command": "./gradlew assembleRelease --no-build-cache --no-daemon --console=plain --warning-mode=all",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Assemble Debug APK",
+			"type": "shell",
+			"command": "./gradlew assembleDebug --no-build-cache --no-daemon --console=plain --warning-mode=all",
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

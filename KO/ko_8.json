@@ -1,0 +1,16 @@
+{
+  "rounds": [
+    {
+      "name": "Quarterfinals",
+      "matches": [
+        {"match": 1, "p1": 1, "p2": 8},
+        {"match": 2, "p1": 4, "p2": 5},
+        {"match": 3, "p1": 2, "p2": 7},
+        {"match": 4, "p1": 3, "p2": 6}
+      ]
+    },
+    { "name": "Semifinals", "matches": [ {"match": 1, "p1": "W1", "p2": "W2"}, {"match": 2, "p1": "W3", "p2": "W4"} ] },
+    { "name": "Final", "matches": [ {"match": 1, "p1": "W1", "p2": "W2"} ] },
+    { "name": "Third Place", "matches": [ {"match": 1, "p1": "L1", "p2": "L2"} ] }
+  ]
+}

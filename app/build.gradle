@@ -1,0 +1,87 @@
+/*
+ * Fencing Scores - Android App for Fencing Pool Management
+ * Copyright (C) 2026
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = 'com.fencing.scores'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.fencing.scores"
+        minSdk 30
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.debug
+            // Speed optimizations for release
+            ndk {
+                debugSymbolLevel = 'NONE'
+            }
+        }
+        debug {
+            applicationIdSuffix ".debug"
+        }
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    
+    // Java compiler optimization for speed
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['-O']
+    }
+    
+    // Packaging options for speed
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
+}
+
+androidComponents {
+    onVariants(selector().withBuildType('debug')) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set('Fence-debug.apk')
+        }
+    }
+    onVariants(selector().withBuildType('release')) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set('Fence.apk')
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.10.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    // ZXing for QR code generation and scanning
+    implementation 'com.google.zxing:core:3.5.2'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}

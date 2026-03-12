@@ -1,0 +1,21 @@
+{
+  "type": "double_elimination",
+  "participants": 32,
+  "main_bracket": [
+    [1, 32], [16, 17], [9, 24], [8, 25], [5, 28], [12, 21], [13, 20], [4, 29],
+    [3, 30], [14, 19], [11, 22], [6, 27], [7, 26], [10, 23], [15, 18], [2, 31]
+  ],
+  "main_bracket_rounds": 5,
+  "losers_bracket": [
+    ["L1", "L2"], ["L3", "L4"], ["L5", "L6"], ["L7", "L8"], ["L9", "L10"], ["L11", "L12"], ["L13", "L14"], ["L15", "L16"],
+    ["W17", "W18"], ["W19", "W20"], ["W21", "W22"], ["W23", "W24"],
+    ["L25", "L26"], ["L27", "L28"], ["W29", "W30"], ["L31", "W32"]
+  ],
+  "losers_bracket_rounds": 5,
+  "finals": [
+    ["Winner Main", "Winner Losers"]
+  ],
+  "placement_matches": [
+    ["Loser Main Final", "Loser Losers Final"]
+  ]
+}

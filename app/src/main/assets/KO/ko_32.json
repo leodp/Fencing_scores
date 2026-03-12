@@ -1,0 +1,66 @@
+{
+  "rounds": [
+    {
+      "name": "Round of 32",
+      "matches": [
+        {"match": 1, "p1": 1, "p2": 32},
+        {"match": 2, "p1": 16, "p2": 17},
+        {"match": 3, "p1": 8, "p2": 25},
+        {"match": 4, "p1": 9, "p2": 24},
+        {"match": 5, "p1": 5, "p2": 28},
+        {"match": 6, "p1": 12, "p2": 21},
+        {"match": 7, "p1": 4, "p2": 29},
+        {"match": 8, "p1": 13, "p2": 20},
+        {"match": 9, "p1": 6, "p2": 27},
+        {"match": 10, "p1": 11, "p2": 22},
+        {"match": 11, "p1": 3, "p2": 30},
+        {"match": 12, "p1": 14, "p2": 19},
+        {"match": 13, "p1": 7, "p2": 26},
+        {"match": 14, "p1": 10, "p2": 23},
+        {"match": 15, "p1": 2, "p2": 31},
+        {"match": 16, "p1": 15, "p2": 18}
+      ]
+    },
+    {
+      "name": "Round of 16",
+      "matches": [
+        {"match": 1, "p1": "W1", "p2": "W2"},
+        {"match": 2, "p1": "W3", "p2": "W4"},
+        {"match": 3, "p1": "W5", "p2": "W6"},
+        {"match": 4, "p1": "W7", "p2": "W8"},
+        {"match": 5, "p1": "W9", "p2": "W10"},
+        {"match": 6, "p1": "W11", "p2": "W12"},
+        {"match": 7, "p1": "W13", "p2": "W14"},
+        {"match": 8, "p1": "W15", "p2": "W16"}
+      ]
+    },
+    {
+      "name": "Quarterfinals",
+      "matches": [
+        {"match": 1, "p1": "W1", "p2": "W2"},
+        {"match": 2, "p1": "W3", "p2": "W4"},
+        {"match": 3, "p1": "W5", "p2": "W6"},
+        {"match": 4, "p1": "W7", "p2": "W8"}
+      ]
+    },
+    {
+      "name": "Semifinals",
+      "matches": [
+        {"match": 1, "p1": "W1", "p2": "W2"},
+        {"match": 2, "p1": "W3", "p2": "W4"}
+      ]
+    },
+    {
+      "name": "Final",
+      "matches": [
+        {"match": 1, "p1": "W1", "p2": "W2"}
+      ]
+    },
+    {
+      "name": "Third Place",
+      "matches": [
+        {"match": 1, "p1": "L1", "p2": "L2"}
+      ]
+    }
+  ]
+}

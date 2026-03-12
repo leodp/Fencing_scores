@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Fencing Scores - Android App for Fencing Pool Management
+  ~ Copyright (C) 2026
+  ~ 
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  -->
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="blue">#FF0000FF</color>
+    <color name="red">#FFFF0000</color>
+    <color name="gray">#FF808080</color>
+    
+    <!-- Theme colors -->
+    <color name="colorPrimary">#FF0000FF</color>
+    <color name="colorPrimaryVariant">#FF000080</color>
+    <color name="colorOnPrimary">#FFFFFFFF</color>
+    <color name="colorSecondary">#FF0000FF</color>
+    <color name="colorSecondaryVariant">#FF000080</color>
+    <color name="colorOnSecondary">#FFFFFFFF</color>
+    <color name="colorError">#FFFF0000</color>
+    <color name="colorErrorVariant">#FF800000</color>
+    <color name="colorOnError">#FFFFFFFF</color>
+    <color name="colorSurface">#FFFFFFFF</color>
+    <color name="colorOnSurface">#FF000000</color>
+    <color name="colorBackground">#FFFFFFFF</color>
+    <color name="colorOnBackground">#FF000000</color>
+</resources>

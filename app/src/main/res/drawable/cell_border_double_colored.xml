@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Fencing Scores - Cell border with colored background and double border
+  ~ Copyright (C) 2026
+  -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background color layer -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+    <!-- Border layer -->
+    <item>
+        <shape android:shape="rectangle">
+            <stroke
+                android:width="2dp"
+                android:color="@color/black" />
+        </shape>
+    </item>
+</layer-list>

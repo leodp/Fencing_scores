@@ -1,0 +1,14 @@
+# Android / Gradle build outputs
+.gradle/
+/build/
+app/build/
+
+# Local Android SDK path (machine-specific, set by each developer)
+local.properties
+
+# IDE - IntelliJ / Android Studio
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

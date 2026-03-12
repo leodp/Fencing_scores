@@ -1,0 +1,98 @@
+This app is used to log & calculate the results of a fencing pool
+
+Interaction:
+------------
+Pressing the Nr column shows the running bout order
+Long pressing last  cells in the Nr col. adds    1 participant
+Long pressing first cells in the Nr col. removes 1 participant
+
+Select a participant name to define/cancel it
+Bout results are defined/reset in the bouts area
+
+The top row exports the results to a CSV file in the Documents
+Save a screenshot as you usually do in your device
+
+Touch Position cells to show this help
+Touch results cells to change their color
+
+Long pressing the first cell in the position column, 
+participants & results are sorted in ascending ranking order
+
+-----------------------------------------------------------------
+
+Results are calculated every time a bout is entered
+They are automatically saved in a backup file at each interaction
+RESTORE last pool backup with the button above
+You can also used saved CSV files to reload a previous situation
+ATTENTION: if the program crashes, do NOT enter again data
+  This will overwrite the backup. Come here instead & press RESTORE
+
+
+OVERVIEW ACTIONS -------------------------------------------------
+
+# Fencing Scores App - Actions Reference
+
+## Pages (circular navigation)
+**Round (0) → Merged (1) → KO (2) → Final (3) → Round (0)**
+
+## Navigation (All Pages)
+ Swipe left  : Next page
+ Swipe right : Previous page
+ Long press  : Next page (Final → Round wraps)
+
+
+## Round Page
+ Nr cell : Click : Show upcoming bouts
+ Nr cell (top half) : Long press : Remove last participant
+ Nr cell (bottom half) : Long press : Add participant
+ Name cell : Click : Edit name
+ Bout cell : Click : Enter scores
+ V/→/←/I/% cell : Click : Cycle color theme
+ P cell : Long press : Sort by ranking
+ Header (except P) : Click : Export CSV
+ P cell : Click : Show Help dialog
+ Result cell : Long press : Go to Merged
+
+**Help Dialog (2x3 grid):** buttons & show this help file
+
+
+## Merged Page
+ Nr cell (top half) : Long press : Remove last participant
+ Nr cell (bottom half) : Long press : Add participant
+ Name/V/→/←/I/%/P cell : Click : Edit value
+ FinalPos cell : Click : Edit position
+ FinalPos cell : Long press : Sort by position
+ Any other cell : Long press : Go to KO
+
+
+## KO Page
+ Match button : Click : Enter match scores
+ Repechage checkbox : Toggle : Enable/disable repechage
+
+**Match popup Dialog:** Score buttons (0-15), RESET, CANCEL
+
+
+## Final Page
+Read-only rankings display.
+ Long press : Go back to Round
+
+
+## Data Flow
+Round (pool) → Merged (rankings) → KO → Final (results)
+
+## Automatic Backup
+Each page backs up to `{Page}_backup.csv` on changes
+Crash detection via CRASH.txt
+Backup recovered with RESTORE buttons
+
+## QR Codes
+GZIP + Base64 compression for all QR transfers
+To help sharing info between devices
+
+
+----------------------------------------------------------------
+
+
+Program licensed with the GNU GPL License V3.0, free to use
+https://www.gnu.org/licenses/gpl-3.0.en.html
+For info contact leodp@yahoo.com
