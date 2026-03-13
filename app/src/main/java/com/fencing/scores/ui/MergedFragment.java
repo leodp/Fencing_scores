@@ -133,7 +133,13 @@ public class MergedFragment extends Fragment {
                         
                         // Try to restore from Merged_backup.csv if it exists and has valid data
                         // If not, fall back to loading from Round's Fencing_backup.csv
+                        // Only restores after a crash, not on normal app restart
                         private void tryAutoRestoreFromBackup() {
+                            // Only restore if app crashed - normal restart should start fresh
+                            if (!com.fencing.scores.MainActivity.crashDetected) {
+                                android.util.Log.d("MergedFragment", "No crash detected, skipping auto-restore");
+                                return;
+                            }
                             try {
                                 java.io.File filesDir = requireContext().getFilesDir();
                                 java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
@@ -1097,7 +1103,7 @@ public class MergedFragment extends Fragment {
                 cell.setOnClickListener(v -> {
                     EditText input = new EditText(getContext());
                     input.setText(valueFinal);
-                    input.setSelection(input.getText().length());
+                    input.setSelectAllOnFocus(true);
                     input.setSingleLine(true);
                     input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
                     if (colFinal == 1) {
@@ -1111,6 +1117,7 @@ public class MergedFragment extends Fragment {
                             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
                         }
                     }
+                    input.requestFocus();
                     androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(getContext());
                     builder.setTitle("Edit " + header);
                     builder.setView(input);
@@ -1154,6 +1161,7 @@ public class MergedFragment extends Fragment {
                     });
                     builder.setNegativeButton("CANCEL", (dialog, which) -> dialog.cancel());
                     androidx.appcompat.app.AlertDialog dialog = builder.create();
+                    dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
                     input.setOnEditorActionListener((v2, actionId, event) -> {
                         if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick();
@@ -1359,6 +1367,11 @@ public class MergedFragment extends Fragment {
 
     // Calculates and assigns FinalPos for all rows using %, I, →
     private void calculateFinalPositions() {
+        // Clear all FinalPos values first to ensure fresh recalculation
+        for (Row r : rows) {
+            r.finalPos = null;
+        }
+        
         // Remove all but one row with empty Name and null FinalPos
         int emptyRowIdx = -1;
         for (int i = rows.size() - 1; i >= 0; i--) {
@@ -1678,6 +1691,9 @@ public class MergedFragment extends Fragment {
                 rows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
                 addedCount++;
             }
+            
+            // Recalculate FinalPos for combined data
+            calculateFinalPositions();
             
             // Re-render table
             renderRows();

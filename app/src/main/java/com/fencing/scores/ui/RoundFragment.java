@@ -538,6 +538,8 @@ public class RoundFragment extends Fragment {
                 // Add long click to sort by P ranking and update matrix
                 cell.setOnLongClickListener(v -> {
                     sortByPRankingAndReload();
+                    // Save backup after sorting to persist new order
+                    saveBackupToDocuments();
                     // Update the matrix after sorting
                     createMatrix(getView());
                     return true;
@@ -866,6 +868,8 @@ public class RoundFragment extends Fragment {
         // Add long-press to sort by P ranking (same as P header)
         pCell.setOnLongClickListener(v -> {
             sortByPRankingAndReload();
+            // Save backup after sorting to persist new order
+            saveBackupToDocuments();
             createMatrix(getView());
             return true;
         });

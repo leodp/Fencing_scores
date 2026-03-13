@@ -275,7 +275,13 @@ public class KOFragment extends Fragment {
     }
     
     // Try to restore from KO_backup.csv if it exists
+    // Only restores after a crash, not on normal app restart
     private void tryAutoRestoreFromBackup() {
+        // Only restore if app crashed - normal restart should start fresh
+        if (!com.fencing.scores.MainActivity.crashDetected) {
+            android.util.Log.d("KOFragment", "No crash detected, skipping auto-restore");
+            return;
+        }
         try {
             java.io.File filesDir = requireContext().getFilesDir();
             java.io.File backupFile = new java.io.File(filesDir, "KO_backup.csv");
