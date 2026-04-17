@@ -227,6 +227,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Force light mode - app uses white backgrounds and has no dark mode resources
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO);
         // Reset crash flag before checking (static variable may persist across activity recreations)
         crashDetected = false;
         // Crash file check

@@ -1893,24 +1893,24 @@ public class KOFragment extends Fragment {
                 int p1Pos = nameToPosition.getOrDefault(p1Name, 0);
                 int p2Pos = nameToPosition.getOrDefault(p2Name, 0);
                 String label;
-                String posShadow = "font-weight:bold;text-shadow:2px 2px 4px #222;";
                 if (match.score1 >= 0 && match.score2 >= 0) {
                     boolean p1Winner = match.score1 > match.score2;
                     boolean p2Winner = match.score2 > match.score1;
                     String p1Color = p1Winner ? "#1976D2" : "#D32F2F";
                     String p2Color = p2Winner ? "#1976D2" : "#D32F2F";
-                    String p1PosSpan = (p1Pos > 0) ? "<span style='color:" + p1Color + ";" + posShadow + "'>" + p1Pos + "</span> " : "";
-                    String p2PosSpan = (p2Pos > 0) ? "<span style='color:" + p2Color + ";" + posShadow + "'>" + p2Pos + "</span> " : "";
-                    String p1NameSpan = "<span style='color:" + p1Color + "'>" + p1Name.toUpperCase() + "</span>";
-                    String p2NameSpan = "<span style='color:" + p2Color + "'>" + p2Name.toUpperCase() + "</span>";
-                    String resultSpan = "<span style='color:#222;" + posShadow + "'> " + match.score1 + ":" + match.score2 + "</span>";
+                    String p1PosSpan = (p1Pos > 0) ? "<b><font color='" + p1Color + "'>" + p1Pos + "</font></b> " : "";
+                    String p2PosSpan = (p2Pos > 0) ? "<b><font color='" + p2Color + "'>" + p2Pos + "</font></b> " : "";
+                    String p1NameSpan = "<font color='" + p1Color + "'>" + p1Name.toUpperCase() + "</font>";
+                    String p2NameSpan = "<font color='" + p2Color + "'>" + p2Name.toUpperCase() + "</font>";
+                    String resultSpan = "<b><font color='#222222'> " + match.score1 + ":" + match.score2 + "</font></b>";
                     label = p1PosSpan + p1NameSpan + " Vs " + p2PosSpan + p2NameSpan + resultSpan;
                 } else {
-                    String p1Label = (p1Pos > 0) ? "<b style='text-shadow:2px 2px 4px #222'>" + p1Pos + "</b> " + p1Name.toUpperCase() : p1Name.toUpperCase();
-                    String p2Label = (p2Pos > 0) ? "<b style='text-shadow:2px 2px 4px #222'>" + p2Pos + "</b> " + p2Name.toUpperCase() : p2Name.toUpperCase();
+                    String p1Label = (p1Pos > 0) ? "<b>" + p1Pos + "</b> " + p1Name.toUpperCase() : p1Name.toUpperCase();
+                    String p2Label = (p2Pos > 0) ? "<b>" + p2Pos + "</b> " + p2Name.toUpperCase() : p2Name.toUpperCase();
                     label = p1Label + " Vs " + p2Label + " <b>x:x</b>";
                 }
                 matchBtn.setAllCaps(false);
+                matchBtn.setTextColor(Color.BLACK);
                 matchBtn.setText(android.text.Html.fromHtml(label));
                 matchBtn.setSingleLine(true);
                 matchBtn.setPadding(8, 0, 8, 0);
@@ -1978,6 +1978,7 @@ public class KOFragment extends Fragment {
             // Add header for this round
             TextView header = new TextView(getContext());
             header.setText("Round " + (r + 1));
+            header.setTextColor(Color.BLACK);
             header.setGravity(Gravity.CENTER);
             header.setTypeface(null, android.graphics.Typeface.BOLD_ITALIC);
             header.setPadding(8, 4, 8, 4);
@@ -2295,24 +2296,24 @@ public class KOFragment extends Fragment {
                     int p2Pos = nameToPosition.getOrDefault(p2Name, 0);
                     
                     String label;
-                    String posShadow = "font-weight:bold;text-shadow:2px 2px 4px #222;";
                     if (match.score1 >= 0 && match.score2 >= 0) {
                         boolean p1Winner = match.score1 > match.score2;
                         boolean p2Winner = match.score2 > match.score1;
                         String p1Color = p1Winner ? "#1976D2" : "#D32F2F";
                         String p2Color = p2Winner ? "#1976D2" : "#D32F2F";
-                        String p1PosSpan = (p1Pos > 0) ? "<span style='color:" + p1Color + ";" + posShadow + "'>" + p1Pos + "</span> " : "";
-                        String p2PosSpan = (p2Pos > 0) ? "<span style='color:" + p2Color + ";" + posShadow + "'>" + p2Pos + "</span> " : "";
-                        String p1NameSpan = "<span style='color:" + p1Color + "'>" + p1Name.toUpperCase() + "</span>";
-                        String p2NameSpan = "<span style='color:" + p2Color + "'>" + p2Name.toUpperCase() + "</span>";
-                        String resultSpan = "<span style='color:#222;" + posShadow + "'> " + match.score1 + ":" + match.score2 + "</span>";
+                        String p1PosSpan = (p1Pos > 0) ? "<b><font color='" + p1Color + "'>" + p1Pos + "</font></b> " : "";
+                        String p2PosSpan = (p2Pos > 0) ? "<b><font color='" + p2Color + "'>" + p2Pos + "</font></b> " : "";
+                        String p1NameSpan = "<font color='" + p1Color + "'>" + p1Name.toUpperCase() + "</font>";
+                        String p2NameSpan = "<font color='" + p2Color + "'>" + p2Name.toUpperCase() + "</font>";
+                        String resultSpan = "<b><font color='#222222'> " + match.score1 + ":" + match.score2 + "</font></b>";
                         label = p1PosSpan + p1NameSpan + " Vs " + p2PosSpan + p2NameSpan + resultSpan;
                     } else {
-                        String p1Label = (p1Pos > 0) ? "<b style='text-shadow:2px 2px 4px #222'>" + p1Pos + "</b> " + p1Name.toUpperCase() : p1Name.toUpperCase();
-                        String p2Label = (p2Pos > 0) ? "<b style='text-shadow:2px 2px 4px #222'>" + p2Pos + "</b> " + p2Name.toUpperCase() : p2Name.toUpperCase();
+                        String p1Label = (p1Pos > 0) ? "<b>" + p1Pos + "</b> " + p1Name.toUpperCase() : p1Name.toUpperCase();
+                        String p2Label = (p2Pos > 0) ? "<b>" + p2Pos + "</b> " + p2Name.toUpperCase() : p2Name.toUpperCase();
                         label = p1Label + " Vs " + p2Label + " <b>x:x</b>";
                     }
                     
+                    matchBtn.setTextColor(Color.BLACK);
                     matchBtn.setText(android.text.Html.fromHtml(label));
                     // Use same text size as winners bracket for all buttons
                     matchBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizeSp);
@@ -2371,6 +2372,7 @@ public class KOFragment extends Fragment {
             
             TextView gfHeader = new TextView(getContext());
             gfHeader.setText("Grand Final");
+            gfHeader.setTextColor(Color.BLACK);
             gfHeader.setGravity(Gravity.CENTER);
             gfHeader.setTypeface(null, android.graphics.Typeface.BOLD);
             gfHeader.setPadding(8, 4, 8, 4);
@@ -2386,6 +2388,7 @@ public class KOFragment extends Fragment {
                 gfLabel = gfP1 + " Vs " + gfP2 + " x:x";
             }
             gfBtn.setText(gfLabel);
+            gfBtn.setTextColor(Color.BLACK);
             gfBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizeSp);
             gfBtn.setSingleLine(true);
             gfBtn.setPadding(8, 0, 8, 0);

@@ -1,5 +1,16 @@
 # Changelog
 
+## [2026-04-17]
+
+### Bug Fixes
+
+#### Text Color Visibility on Android 16 (MergedFragment, KOFragment, MainActivity, MergedActivity)
+- **Issue**: On Android 16 phones with dark mode enabled, text in Merged data cells and KO match buttons was invisible (white on white). The app uses `Theme.MaterialComponents.DayNight.DarkActionBar` but has no dark mode resources, so DayNight switched default text colors to white while backgrounds remained white.
+- **Fix**:
+  - Forced light mode via `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_NO)` in both `MainActivity` and `MergedActivity`
+  - Added explicit `setTextColor(Color.BLACK)` to all Merged data cells (EditText), KO match buttons (main bracket, consolation bracket, Grand Final), round headers, Grand Final header, and Repechage checkbox
+  - Replaced unsupported CSS `<span style='color:...'>` with Android-compatible `<font color='...'>` tags in KO match button HTML labels (Android's `Html.fromHtml()` does not support CSS style attributes)
+
 ## [2026-03-13]
 
 ### Bug Fixes

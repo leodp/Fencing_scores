@@ -24,6 +24,9 @@ import com.fencing.scores.ui.MergedFragment;
 public class MergedActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Force light mode - app uses white backgrounds and has no dark mode resources
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO);
         super.onCreate(savedInstanceState);
         // Set a simple container for the fragment
         setContentView(R.layout.activity_merged);

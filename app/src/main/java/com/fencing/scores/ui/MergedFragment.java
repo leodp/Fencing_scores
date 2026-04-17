@@ -1038,6 +1038,7 @@ public class MergedFragment extends Fragment {
                 EditText cell = new EditText(getContext());
                 cell.setText(value);
                 cell.setGravity(Gravity.CENTER);
+                cell.setTextColor(Color.BLACK);
                 cell.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12); // Smaller text to fit
                 cell.setPadding(4, 2, 4, 2); // Reduced padding
                 cell.setLongClickable(true);
