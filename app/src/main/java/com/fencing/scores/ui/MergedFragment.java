@@ -277,7 +277,7 @@ public class MergedFragment extends Fragment {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
             intent.setType("text/csv");
-            intent.putExtra(android.content.Intent.EXTRA_TITLE, "Ranking.csv");
+            intent.putExtra(android.content.Intent.EXTRA_TITLE, generateTimestampedFilename("RankingRounds"));
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 try {
                     intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
@@ -350,13 +350,15 @@ public class MergedFragment extends Fragment {
         
         // Dark blue color matching KO page
         int darkBlue = 0xFF1565C0;
-        int btnMargin = 12;
+        int btnMargin = 4; // Close but not touching
+        float btnMinWidthDp = 96 * 1.2f; // 20% wider than base
+        int btnMinWidth = (int)(btnMinWidthDp * getResources().getDisplayMetrics().density);
         
         reloadBtn = new Button(getContext());
         reloadBtn.setText("RELOAD round");
         setRoundedBackground(reloadBtn, 0xFF388E3C); // Green
         reloadBtn.setTextColor(0xFFFFFFFF);
-        reloadBtn.setMinWidth((int)(130 * getResources().getDisplayMetrics().density));
+        reloadBtn.setMinWidth(btnMinWidth);
         LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp1.setMargins(0, 0, btnMargin, 0);
         reloadBtn.setLayoutParams(lp1);
@@ -366,6 +368,7 @@ public class MergedFragment extends Fragment {
         replaceCsvBtn.setText("REPLACE");
         setRoundedBackground(replaceCsvBtn, darkBlue);
         replaceCsvBtn.setTextColor(0xFFFFFFFF);
+        replaceCsvBtn.setMinWidth(btnMinWidth);
         LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp2.setMargins(0, 0, btnMargin, 0);
         replaceCsvBtn.setLayoutParams(lp2);
@@ -375,6 +378,7 @@ public class MergedFragment extends Fragment {
         addCsvBtn.setText("ADD");
         setRoundedBackground(addCsvBtn, darkBlue);
         addCsvBtn.setTextColor(0xFFFFFFFF);
+        addCsvBtn.setMinWidth(btnMinWidth);
         LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp3.setMargins(0, 0, btnMargin, 0);
         addCsvBtn.setLayoutParams(lp3);
@@ -384,13 +388,13 @@ public class MergedFragment extends Fragment {
         restoreBtn.setText("RESTORE crash");
         setRoundedBackground(restoreBtn, darkBlue);
         restoreBtn.setTextColor(0xFFFFFFFF);
-        restoreBtn.setMinWidth((int)(130 * getResources().getDisplayMetrics().density));
+        restoreBtn.setMinWidth(btnMinWidth);
         restoreBtn.setOnClickListener(v -> {
             android.util.Log.v("MergedFragment", "RESTORE button pressed - loading from Merged_backup.csv");
             restoreData();
         });
         LinearLayout.LayoutParams lpRestore = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpRestore.setMargins(0, 0, btnMargin * 4, 0);
+        lpRestore.setMargins(0, 0, btnMargin, 0);
         restoreBtn.setLayoutParams(lpRestore);
         btnLayout.addView(restoreBtn);
         
@@ -399,6 +403,7 @@ public class MergedFragment extends Fragment {
         qrOutBtn.setText("QR OUT");
         setRoundedBackground(qrOutBtn, darkBlue);
         qrOutBtn.setTextColor(0xFFFFFFFF);
+        qrOutBtn.setMinWidth(btnMinWidth);
         qrOutBtn.setOnClickListener(v -> showQrCodeFullscreen());
         LinearLayout.LayoutParams lpQrOut = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lpQrOut.setMargins(0, 0, btnMargin, 0);
@@ -410,9 +415,10 @@ public class MergedFragment extends Fragment {
         qrInBtn.setText("QR ADD");
         setRoundedBackground(qrInBtn, darkBlue);
         qrInBtn.setTextColor(0xFFFFFFFF);
+        qrInBtn.setMinWidth(btnMinWidth);
         qrInBtn.setOnClickListener(v -> startQrScanner());
         LinearLayout.LayoutParams lpQrIn = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpQrIn.setMargins(0, 0, btnMargin * 4, 0);
+        lpQrIn.setMargins(0, 0, btnMargin, 0);
         qrInBtn.setLayoutParams(lpQrIn);
         btnLayout.addView(qrInBtn);
         
@@ -662,6 +668,7 @@ public class MergedFragment extends Fragment {
                         }
                         
                         // Now calculate stats from bout results
+                        java.util.List<int[]> csvStatsForRanking = new java.util.ArrayList<>();
                         for (int i = 0; i < allTokens.size(); i++) {
                             String[] tokens = allTokens.get(i);
                             if (tokens.length < 2) continue;
@@ -670,6 +677,7 @@ public class MergedFragment extends Fragment {
                             String name = tokens[1];
                             
                             int victories = 0, given = 0, received = 0, boutsWon = 0, boutsLost = 0;
+                            boolean hasBout = false;
                             for (int j = 0; j < allTokens.size(); j++) {
                                 if (i != j && boutResults[i][j] >= 0 && boutResults[j][i] >= 0) {
                                     int myScore = boutResults[i][j];
@@ -682,14 +690,36 @@ public class MergedFragment extends Fragment {
                                     }
                                     given += myScore;
                                     received += oppScore;
+                                    hasBout = true;
                                 }
                             }
                             int index = given - received;
                             int percent = (boutsWon + boutsLost) > 0 ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100) : 0;
                             
-                            // P is 0 initially, FinalPos will be calculated after
+                            // P is 0 initially, will be ranked below
                             csvRows.add(new Row(nr, name, victories, given, received, index, percent, 0, null));
+                            if (name != null && !name.trim().isEmpty() && hasBout) {
+                                csvStatsForRanking.add(new int[]{csvRows.size() - 1, percent, index, given});
+                            }
                             android.util.Log.i("MergedFragment", "CSV Round format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent);
+                        }
+                        // Calculate P ranking for CSV Round format rows
+                        csvStatsForRanking.sort((a, b) -> {
+                            int cmp = Integer.compare(b[1], a[1]); // percent DESC
+                            if (cmp != 0) return cmp;
+                            cmp = Integer.compare(b[2], a[2]); // index DESC
+                            if (cmp != 0) return cmp;
+                            return Integer.compare(b[3], a[3]); // given DESC
+                        });
+                        int csvPos = 1;
+                        for (int i = 0; i < csvStatsForRanking.size(); i++) {
+                            if (i > 0) {
+                                int[] prev = csvStatsForRanking.get(i - 1);
+                                int[] curr = csvStatsForRanking.get(i);
+                                boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
+                                if (!same) csvPos = i + 1;
+                            }
+                            csvRows.get(csvStatsForRanking.get(i)[0]).p = csvPos;
                         }
                     } else {
                         // Merged format (no bout columns): use values directly from CSV
@@ -831,9 +861,12 @@ public class MergedFragment extends Fragment {
             
             // Build rows from parsed data
             rows.clear();
+            // First pass: create rows with P=0
+            java.util.List<int[]> statsForRanking = new java.util.ArrayList<>(); // [rowIndex, percent, index, given]
             for (int i = 0; i < actualPart; i++) {
                 String name = participantNames[i] != null ? participantNames[i] : "";
                 int victories = 0, given = 0, received = 0, boutsWon = 0, boutsLost = 0;
+                boolean hasBout = false;
                 for (int j = 0; j < actualPart; j++) {
                     if (i != j && boutResults[i][j] >= 0 && boutResults[j][i] >= 0 &&
                         participantNames[j] != null && !participantNames[j].isEmpty()) {
@@ -843,19 +876,37 @@ public class MergedFragment extends Fragment {
                         else if (s < o) { boutsLost++; }
                         given += s;
                         received += o;
+                        hasBout = true;
                     }
                 }
                 int index = given - received;
                 int percent = (boutsWon + boutsLost) > 0 ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100) : 0;
                 rows.add(new Row(i + 1, name, victories, given, received, index, percent, 0, null));
+                if (name != null && !name.trim().isEmpty() && hasBout) {
+                    statsForRanking.add(new int[]{i, percent, index, given});
+                }
                 android.util.Log.v("MergedFragment", "Row loaded from Round backup: Nr=" + (i + 1) + ", Name='" + name + "', V=" + victories);
+            }
+            // Second pass: calculate P ranking (same algorithm as Round page)
+            statsForRanking.sort((a, b) -> {
+                int cmp = Integer.compare(b[1], a[1]); // percent DESC
+                if (cmp != 0) return cmp;
+                cmp = Integer.compare(b[2], a[2]); // index DESC
+                if (cmp != 0) return cmp;
+                return Integer.compare(b[3], a[3]); // given DESC
+            });
+            int pos = 1;
+            for (int i = 0; i < statsForRanking.size(); i++) {
+                if (i > 0) {
+                    int[] prev = statsForRanking.get(i - 1);
+                    int[] curr = statsForRanking.get(i);
+                    boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
+                    if (!same) pos = i + 1;
+                }
+                rows.get(statsForRanking.get(i)[0]).p = pos;
             }
             
             calculateFinalPositions();
-            // Assign P = FinalPos for all rows after ranking
-            for (Row r : rows) {
-                r.p = (r.finalPos != null) ? r.finalPos : 0;
-            }
             
             useCsvOnly = false;
             backupMergedMatrix();
@@ -874,6 +925,13 @@ public class MergedFragment extends Fragment {
         drawable.setColor(color);
         drawable.setCornerRadius(8 * getResources().getDisplayMetrics().density); // 8dp corners
         button.setBackground(drawable);
+    }
+
+    // Generate timestamped filename: prefix_YYYYMMDD_hh.mm.ss.csv
+    private String generateTimestampedFilename(String prefix) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HH.mm.ss", java.util.Locale.US);
+        String timestamp = sdf.format(new java.util.Date());
+        return prefix + "_" + timestamp + ".csv";
     }
 
     private void renderRows() {
@@ -1101,6 +1159,10 @@ public class MergedFragment extends Fragment {
                         return true;
                     });
                 } else {
+                // P and FinalPos cells: no click editing
+                if (colIdx == 7 || colIdx == 8) {
+                    // No click action for P and FinalPos cells
+                } else {
                 cell.setOnClickListener(v -> {
                     EditText input = new EditText(getContext());
                     input.setText(valueFinal);
@@ -1173,6 +1235,7 @@ public class MergedFragment extends Fragment {
                     });
                     dialog.show();
                 });
+                } // end else for P/FinalPos check
                 } // end else for non-Nr columns
                 tr.addView(cell);
             }
@@ -1421,11 +1484,9 @@ public class MergedFragment extends Fragment {
             pos += (j - i);
             i = j;
         }
-        // Set all 0 FinalPos to null for consistency, and sync P with FinalPos
+        // Set all 0 FinalPos to null for consistency
         for (Row r : rows) {
             if (r.finalPos != null && r.finalPos == 0) r.finalPos = null;
-            // Keep P in sync with FinalPos
-            r.p = (r.finalPos != null) ? r.finalPos : 0;
         }
     }
     
@@ -1571,13 +1632,34 @@ public class MergedFragment extends Fragment {
         Dialog dialog = new Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         
+        // Create horizontal layout with vertical label + QR code
+        LinearLayout container = new LinearLayout(requireContext());
+        container.setOrientation(LinearLayout.HORIZONTAL);
+        container.setBackgroundColor(0xFFFFFFFF);
+        container.setGravity(Gravity.CENTER);
+        
+        // Vertical label "Merged ranking" on the left
+        TextView label = new TextView(requireContext());
+        label.setText("Merged ranking");
+        label.setTextColor(0xFF333333);
+        label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+        label.setRotation(-90);
+        label.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        labelParams.gravity = Gravity.CENTER;
+        label.setLayoutParams(labelParams);
+        container.addView(label);
+        
         ImageView imageView = new ImageView(requireContext());
         imageView.setImageBitmap(qrBitmap);
-        imageView.setBackgroundColor(0xFFFFFFFF);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setOnClickListener(v -> dialog.dismiss());
+        container.addView(imageView);
         
-        dialog.setContentView(imageView);
+        container.setOnClickListener(v -> dialog.dismiss());
+        
+        dialog.setContentView(container);
         dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
         dialog.show();
         

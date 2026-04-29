@@ -1,5 +1,36 @@
 # Changelog
 
+## [V1.2 - 2026-04-29]
+
+### Rounds Page
+- Added black borders to Name column and header cells for improved visibility
+- Improved vertical sizing to use ~98% of screen height
+- Reduced CANCEL/RESET button font size by 25% to prevent text clipping
+- QR OUT now uses a screenshot of the rounds matrix as background
+- QR code size increased to 95% of screen height for better readability
+- Names are now saved to backup on edit, persisting across app restarts
+- Default save filename changed to `BoutRounds_YYYYMMDD_hh.mm.ss.csv`
+- QUIT now clears all backup files (Fencing, Merged, KO) for a clean restart
+- Loading a CSV file or QR code now triggers a backup save, so Merged "Reload Round" works immediately after import
+
+### Merged Page
+- Disabled P value recalculation; FinalPos is the authoritative ranking
+- P values are now preserved when importing from Round data (calculated once at import)
+- P and FinalPos cells are no longer editable via short click
+- Increased button widths by 20% for better readability
+- Uniform close spacing between buttons (4dp gaps)
+- QR OUT shows vertical "Merged ranking" label alongside the code
+- Default save filename changed to `RankingRounds_YYYYMMDD_hh.mm.ss.csv`
+
+### KO Page
+- Compact bracket layout: rounds 2+ positioned closer horizontally using FrameLayout
+- Repechage bracket also uses compact layout with expanded vertical spacing to prevent overlaps
+- Repechage column headers renamed from "|| R1" to "Round 1" format
+- Uniform close spacing between buttons (4dp gaps)
+- QR OUT shows vertical "KO" label alongside the code
+- Default save filename changed to `KO_results_YYYYMMDD_hh.mm.ss.csv`
+- Improved scroll behavior: page swipe only triggers at content edges
+
 ## [2026-04-17]
 
 ### Bug Fixes

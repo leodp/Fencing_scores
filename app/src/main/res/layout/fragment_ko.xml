@@ -7,6 +7,7 @@
     android:scrollbars="none">
 
     <HorizontalScrollView
+        android:id="@+id/ko_horizontalScrollView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fillViewport="true"
@@ -27,14 +28,14 @@
                     android:id="@+id/ko_repechageCheckbox"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="12dp"
+                    android:layout_marginEnd="4dp"
                     android:textColor="@color/black"
                     android:text="Repechage" />
                 <Button
                     android:id="@+id/ko_reloadBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginEnd="4dp"
                     android:backgroundTint="#388E3C"
                     android:textColor="#FFFFFF"
                     android:text="RELOAD" />
@@ -42,7 +43,7 @@
                     android:id="@+id/ko_replaceBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="24dp"
+                    android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
                     android:text="REPLACE" />
@@ -50,7 +51,7 @@
                     android:id="@+id/ko_restoreCrashBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="24dp"
+                    android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
                     android:text="RESTORE CRASH" />
@@ -58,7 +59,7 @@
                     android:id="@+id/ko_qrOutBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
                     android:text="QR OUT" />
@@ -66,7 +67,7 @@
                     android:id="@+id/ko_qrInBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="24dp"
+                    android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
                     android:text="QR IN" />

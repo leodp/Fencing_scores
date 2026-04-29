@@ -398,15 +398,21 @@ public class RoundFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
         // Only restore automatically if crash detected
-        // (No restore on normal start, only on crash or RESTORE button)
+        // On normal start, try to restore from backup if it exists (to preserve names/bouts)
         android.util.Log.d("RoundFragment", "onViewCreated: crashDetected=" + com.fencing.scores.MainActivity.crashDetected);
         if (com.fencing.scores.MainActivity.crashDetected) {
             android.util.Log.d("RoundFragment", "Restoring from backup due to crash");
             restoreFromDefaultBackupCompat();
         } else {
-            // On normal start, clear table to default empty state
-            android.util.Log.d("RoundFragment", "Normal start - resetting to default");
-            scoresViewModel.resetToDefault();
+            // On normal start, try backup first, then reset to default if no backup
+            java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), "Fencing_backup.csv");
+            if (backupFile.exists() && backupFile.length() > 0) {
+                android.util.Log.d("RoundFragment", "Normal start - restoring from backup");
+                restoreFromDefaultBackupCompat();
+            } else {
+                android.util.Log.d("RoundFragment", "Normal start - no backup, resetting to default");
+                scoresViewModel.resetToDefault();
+            }
         }
         // Observe changes and update matrix (only when this fragment is visible/resumed)
         scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> {
@@ -469,7 +475,7 @@ public class RoundFragment extends Fragment {
         int screenHeight = metrics.heightPixels;
         int headerRows = 1;
         int totalRows = nrPart + headerRows;
-        int cellHeight = (int) ((screenHeight * 0.95f) / totalRows); // Use 95% of screen height
+        int cellHeight = (int) (screenHeight * 0.98f / totalRows); // Use 98% of screen height
         TableRow headerRow = createHeaderRow(nrPart, colorIdx, cellHeight);
         tableLayout.addView(headerRow);
         int lastEmptyP = -1;
@@ -526,15 +532,15 @@ public class RoundFragment extends Fragment {
             int[] pair = RESULT_COLOR_PAIRS[colorIdx % RESULT_COLOR_PAIRS.length];
             // Set #A0A0A0 for Nr header, Names header, and bout results headers
             if (i == 0 || i == 1 || (i >= 2 && i < nrPart + 2)) {
-                cell.setBackgroundColor(0xFFA0A0A0);
+                cell.setBackground(makeBorderedCell(0xFFA0A0A0));
             } else if (i >= nrPart + 2 && i <= nrPart + 6) {
-                cell.setBackgroundColor(pair[0]); // C, →, ←, I, %
+                cell.setBackground(makeBorderedCell(pair[0])); // C, →, ←, I, %
                 cell.setOnClickListener(v -> {
                     int nextIdx = (colorIdx + 1) % RESULT_COLOR_PAIRS.length;
                     scoresViewModel.setColorCycleIndex(nextIdx);
                 });
             } else if (i == nrPart + 7) {
-                cell.setBackgroundColor(pair[1]);
+                cell.setBackground(makeBorderedCell(pair[1]));
                 // Add long click to sort by P ranking and update matrix
                 cell.setOnLongClickListener(v -> {
                     sortByPRankingAndReload();
@@ -573,11 +579,10 @@ public class RoundFragment extends Fragment {
                 if ((participantNames == null || participantNames.length <= participantIndex) || (boutResults == null || boutResults.length <= participantIndex)) {
                     TableRow row = new TableRow(getContext());
                     TextView nrCell = createDataCell(String.valueOf(participantIndex + 1), true, cellHeight, nrPart);
-                    nrCell.setBackgroundColor(0xFFA0A0A0);
-                    nrCell.setBackgroundResource(R.drawable.cell_border);
+                    nrCell.setBackground(makeBorderedCell(0xFFA0A0A0));
                     row.addView(nrCell);
                     TextView nameCell = createDataCell("", true, cellHeight, nrPart);
-                    nameCell.setBackgroundColor(0xFFA0A0A0);
+                    nameCell.setBackground(makeBorderedCell(0xFFA0A0A0));
                     row.addView(nameCell);
                     // Add empty cells for the rest of the columns
                     for (int j = 0; j < nrPart + 6; j++) {
@@ -597,8 +602,7 @@ public class RoundFragment extends Fragment {
             if (n != null) safeName = n;
         }
         TextView nrCell = createDataCell(String.valueOf(participantIndex + 1), true, cellHeight, nrPart);
-        nrCell.setBackgroundColor(0xFFA0A0A0);
-        nrCell.setBackgroundResource(R.drawable.cell_border);
+        nrCell.setBackground(makeBorderedCell(0xFFA0A0A0));
         // Click on any Nr cell shows upcoming bouts popup
         nrCell.setOnClickListener(v -> {
             showUpcomingBoutsPopup();
@@ -644,7 +648,7 @@ public class RoundFragment extends Fragment {
         }
         row.addView(nrCell);
         TextView nameCell = createDataCell(safeName, true, cellHeight, nrPart);
-        nameCell.setBackgroundColor(0xFFA0A0A0);
+        nameCell.setBackground(makeBorderedCell(0xFFA0A0A0));
         nameCell.setOnClickListener(v -> showNameEditDialog(participantIndex, nameCell));
         row.addView(nameCell);
 
@@ -876,7 +880,7 @@ public class RoundFragment extends Fragment {
         row.addView(pCell);
         return row;
     }
-    // Save CSV directly to Documents with unique filename (Results.csv, Results_001.csv, ...)
+    // Save CSV directly to Documents with unique filename
     private void saveCsvDirectToDocuments() {
         // Use Storage Access Framework file picker for saving CSV
         android.content.Context ctx = getContext();
@@ -884,7 +888,7 @@ public class RoundFragment extends Fragment {
         android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
         intent.setType("text/csv");
-        intent.putExtra(android.content.Intent.EXTRA_TITLE, "Results.csv");
+        intent.putExtra(android.content.Intent.EXTRA_TITLE, generateTimestampedFilename("BoutRounds"));
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             try {
                 intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
@@ -910,6 +914,13 @@ public class RoundFragment extends Fragment {
         drawable.setColor(color);
         drawable.setCornerRadius(8 * getResources().getDisplayMetrics().density); // 8dp corners
         button.setBackground(drawable);
+    }
+
+    // Generate timestamped filename: prefix_YYYYMMDD_hh.mm.ss.csv
+    private String generateTimestampedFilename(String prefix) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HH.mm.ss", java.util.Locale.US);
+        String timestamp = sdf.format(new java.util.Date());
+        return prefix + "_" + timestamp + ".csv";
     }
 
     // Show the help dialog window
@@ -1038,7 +1049,7 @@ public class RoundFragment extends Fragment {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
             intent.setType("text/csv");
-            intent.putExtra(android.content.Intent.EXTRA_TITLE, "Results.csv");
+            intent.putExtra(android.content.Intent.EXTRA_TITLE, generateTimestampedFilename("BoutRounds"));
             saveFileLauncher.launch(intent);
         });
         restoreBtn.setOnClickListener(v -> {
@@ -1074,6 +1085,20 @@ public class RoundFragment extends Fragment {
             } catch (Exception e) {
                 android.util.Log.e("RoundFragment", "QUIT: Error deleting crash file: " + e.getMessage());
             }
+            // Delete all backup files to ensure clean start
+            try {
+                java.io.File filesDir = requireContext().getFilesDir();
+                String[] backupFiles = {"Fencing_backup.csv", "Merged_backup.csv", "KO_backup.csv"};
+                for (String backupName : backupFiles) {
+                    java.io.File f = new java.io.File(filesDir, backupName);
+                    if (f.exists()) {
+                        boolean del = f.delete();
+                        android.util.Log.d("RoundFragment", "QUIT: delete " + backupName + " deleted=" + del);
+                    }
+                }
+            } catch (Exception e) {
+                android.util.Log.e("RoundFragment", "QUIT: Error deleting backup files: " + e.getMessage());
+            }
             requireActivity().finishAffinity();
         });
         dialog.setOnDismissListener(d -> this.helpDialog = null);
@@ -1105,6 +1130,8 @@ public class RoundFragment extends Fragment {
             participantNames[participantIndex] = newName;
             scoresViewModel.setParticipantNames(participantNames);
             // If a new name is entered (not empty), do NOT reset or change bout results—they remain as is.
+            // Save backup after name change so names persist across app restarts
+            saveBackupToDocuments();
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
         android.app.AlertDialog dialog = builder.create();
@@ -1282,7 +1309,7 @@ public class RoundFragment extends Fragment {
         android.widget.Button cancelBtn = new android.widget.Button(getContext());
         cancelBtn.setText("Cancel");
         cancelBtn.setMinHeight(btnHeight);
-        cancelBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        cancelBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize * 0.75f);
         cancelBtn.setPadding(4, 4, 4, 4);
         cancelBtn.setOnClickListener(v -> {
             firstScore[0] = Integer.MIN_VALUE;
@@ -1311,7 +1338,7 @@ public class RoundFragment extends Fragment {
         android.widget.Button resetBtn = new android.widget.Button(getContext());
         resetBtn.setText("RESET");
         resetBtn.setMinHeight(btnHeight);
-        resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize * 0.75f);
         resetBtn.setBackgroundColor(Color.RED);
         resetBtn.setPadding(4, 4, 4, 4);
         resetBtn.setOnClickListener(v -> {
@@ -1554,6 +1581,7 @@ public class RoundFragment extends Fragment {
                     reader.close();
                     in.close();
                     importCsvData(sb.toString());
+                    saveBackupToDocuments();
                 }
             }
         } catch (Exception e) {
@@ -1731,7 +1759,7 @@ public class RoundFragment extends Fragment {
         DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
         int screenWidth = displayMetrics.widthPixels;
         int screenHeight = displayMetrics.heightPixels;
-        int qrSize = Math.min(screenWidth, screenHeight) - 100;
+        int qrSize = (int)(Math.min(screenWidth, screenHeight) * 0.95f);
         
         android.graphics.Bitmap qrBitmap = generateQrCode(compressed, qrSize);
         if (qrBitmap == null) {
@@ -1739,7 +1767,73 @@ public class RoundFragment extends Fragment {
             return;
         }
         
-        showQrCodeFullscreen(qrBitmap);
+        // Take screenshot of the table and use as background
+        android.graphics.Bitmap compositeBitmap = createQrWithTableBackground(qrBitmap);
+        if (compositeBitmap != null) {
+            showQrCodeFullscreen(compositeBitmap);
+        } else {
+            showQrCodeFullscreen(qrBitmap);
+        }
+    }
+    
+    // Create composite image: table screenshot as background with QR code centered on bout matrix
+    private android.graphics.Bitmap createQrWithTableBackground(android.graphics.Bitmap qrBitmap) {
+        try {
+            View root = getView();
+            if (root == null) return null;
+            TableLayout tableLayout = root.findViewById(R.id.tableLayout);
+            if (tableLayout == null) return null;
+            
+            // Create screenshot of the table
+            tableLayout.setDrawingCacheEnabled(true);
+            tableLayout.buildDrawingCache();
+            android.graphics.Bitmap tableBitmap = android.graphics.Bitmap.createBitmap(tableLayout.getDrawingCache());
+            tableLayout.setDrawingCacheEnabled(false);
+            
+            if (tableBitmap == null) return null;
+            
+            // Scale table screenshot to fill screen
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int w = dm.widthPixels;
+            int h = dm.heightPixels;
+            android.graphics.Bitmap scaledTable = android.graphics.Bitmap.createScaledBitmap(tableBitmap, w, h, true);
+            
+            // Create composite bitmap
+            android.graphics.Bitmap composite = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas = new android.graphics.Canvas(composite);
+            
+            // Draw table screenshot with some transparency
+            android.graphics.Paint alphaPaint = new android.graphics.Paint();
+            alphaPaint.setAlpha(80); // semi-transparent background
+            canvas.drawBitmap(scaledTable, 0, 0, alphaPaint);
+            
+            // Calculate center of bout matrix area (skip Nr and Name columns)
+            int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+            // The bout matrix starts at column 2 and spans nrPart columns out of (nrPart + 8) total
+            float totalCols = nrPart + 8;
+            float matrixStartFrac = 2f / totalCols;
+            float matrixEndFrac = (2f + nrPart) / totalCols;
+            int matrixCenterX = (int) (w * (matrixStartFrac + matrixEndFrac) / 2);
+            int matrixCenterY = h / 2;
+            
+            // Scale QR to fit nicely (95% of screen height)
+            int qrDisplaySize = (int) (h * 0.95f);
+            android.graphics.Bitmap scaledQr = android.graphics.Bitmap.createScaledBitmap(qrBitmap, qrDisplaySize, qrDisplaySize, true);
+            
+            // Draw QR code centered on the matrix area
+            int qrLeft = matrixCenterX - qrDisplaySize / 2;
+            int qrTop = matrixCenterY - qrDisplaySize / 2;
+            canvas.drawBitmap(scaledQr, qrLeft, qrTop, null);
+            
+            tableBitmap.recycle();
+            scaledTable.recycle();
+            scaledQr.recycle();
+            
+            return composite;
+        } catch (Exception e) {
+            android.util.Log.e("RoundFragment", "Error creating QR with background: " + e.getMessage());
+            return null;
+        }
     }
     
     // Show QR code in fullscreen dialog
@@ -1881,6 +1975,7 @@ public class RoundFragment extends Fragment {
                     nrPart, findLastEmptyP());
             }
             
+            saveBackupToDocuments();
             android.widget.Toast.makeText(getContext(), "Round data imported from QR", android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             android.util.Log.e("RoundFragment", "Error parsing QR data: " + e.getMessage());

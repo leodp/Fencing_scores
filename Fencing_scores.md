@@ -288,7 +288,6 @@ Cycling colors when clicking result columns (except P):
 - Full screen (no action bar)
 - Dynamic cell/font sizing based on content
 - Round page: Landscape only
-- Other pages: Portrait only
 
 ---
 
@@ -316,3 +315,32 @@ Shared data across all fragments:
 - minSdk: 30
 - Java 21
 - Gradle 9.2+
+
+
+## Enhancements Version 1.2
+
+### Rounds page
+- The cells in Names column and in the headers should have a black border as the bout entry cells, in order to improve visibility
+- The vertical size is not using the whole screen size, its calculation is probably unnecessarily complex. Please cesize the header and cells vertical sizes based on the actual screen size, so that the UI is using as close as possible to 100% of it, if necessary slightly less than 100% to avoid activating/needing to vertical-scroll
+- In the bouts results popup the text "CANCEL" and "RESET" is a bit too wide. Decrease its text font size 25%
+- The QR out is nice, but it lack context. Please use a screenshot of the rounds page (the matrix with names, bouts, calculations, ...) as background to the QR code, and center the QR code image on the bouts results matrix
+- Behavior: when the app is launched for the first time, and Names are added, and then the app closed, the names are lost. Please add to the Names cells the same behavior as in the bouts results: when a name is added the Rounds values should be saved in the backup file.
+- When Pressing the Save button in the help menu, or clicking the headers in the Rounds page, the default filename is Results.csv; please default the name to "BoutRounds_" followed by the date in the form YYYYMMDD_hh.mm.ss and then the extension ".csv"
+
+### Merged page
+- Disable the recalculation of the P value in the Merged page. The FinalPos is the ranking order which has value in the merged table, and it is already calculated correctly. Check that this value is used as ranking in the KO rounds. Disable the editing of P cells values in the cells: short clicking them will have no action associated
+- Disable the editing of FinalPos cells values in the cells: shortclicking them will have no action associated
+- The text in the buttons on the top is too close to the button size. Increase the buttons widths 20%
+- Make the button on the top of the screen close to each other, without touching
+- The QR out is nice, but it lack context. Please add a vertical text on its left: "Merged ranking". Do not rescale the QR code: the text is vertical so that it does not overlap with the code
+- When Pressing the Save button, the default filename is Ranking.csv; please default the name to "RankingRounds_" followed by the date in the form YYYYMMDD_hh.mm.ss and then the extension ".csv"
+
+### KO page
+- Make the button on the top of the screen close to each other, without touching
+- The QR out is nice, but it lack context. Please add a vertical text on its left: "KO". Do not rescale the QR code: the text is vertical so that it does not overlap with the code
+- When Pressing the Save button, the default filename is KO_results.csv; please default the name to "KO_results_" followed by the date in the form YYYYMMDD_hh.mm.ss and then the extension ".csv"
+- Scrolling within the page works, but sometimes the scrolling to other pages (Merged or Final). Change the scrolling behavior, if possible, so that the previous/next pages are scrolled to only after we get to the edges of the KO page
+
+### Conclusion
+- compile the release, ask for my feedback on it, if it's ok upload the changes to github, updating the release to V1.2 and adding the changes to the Changelog (in a synthetic, not too detailed way)
+

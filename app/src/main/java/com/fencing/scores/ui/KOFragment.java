@@ -559,6 +559,39 @@ public class KOFragment extends Fragment {
 
         View root = inflater.inflate(R.layout.fragment_ko, container, false);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
+        
+        // Prevent ViewPager2 from stealing horizontal swipe when scrolling within KO content
+        android.widget.HorizontalScrollView horizontalScroll = root.findViewById(R.id.ko_horizontalScrollView);
+        if (horizontalScroll != null) {
+            horizontalScroll.setOnTouchListener((v, event) -> {
+                // Check if content is wider than the scroll view (has scrollable content)
+                int scrollRange = horizontalScroll.getChildAt(0).getWidth() - horizontalScroll.getWidth();
+                if (scrollRange > 0) {
+                    int scrollX = horizontalScroll.getScrollX();
+                    boolean atLeftEdge = (scrollX <= 0);
+                    boolean atRightEdge = (scrollX >= scrollRange);
+                    
+                    switch (event.getAction()) {
+                        case android.view.MotionEvent.ACTION_DOWN:
+                            // Always claim the touch initially to prevent ViewPager2 from intercepting
+                            horizontalScroll.getParent().requestDisallowInterceptTouchEvent(true);
+                            break;
+                        case android.view.MotionEvent.ACTION_MOVE:
+                            // Only allow parent (ViewPager2) to intercept at edges
+                            if (!atLeftEdge && !atRightEdge) {
+                                horizontalScroll.getParent().requestDisallowInterceptTouchEvent(true);
+                            }
+                            break;
+                        case android.view.MotionEvent.ACTION_UP:
+                        case android.view.MotionEvent.ACTION_CANCEL:
+                            horizontalScroll.getParent().requestDisallowInterceptTouchEvent(false);
+                            break;
+                    }
+                }
+                return false; // Let HorizontalScrollView handle the event normally
+            });
+        }
+        
         LinearLayout koBoxLayout = root.findViewById(R.id.ko_boxLayout);
         koBoxLayoutRef = koBoxLayout; // Save reference for onResume
         Button reloadBtn = root.findViewById(R.id.ko_reloadBtn);
@@ -1267,12 +1300,19 @@ public class KOFragment extends Fragment {
         return getKOName(ref, names);
     }
 
+    // Generate timestamped filename: prefix_YYYYMMDD_hh.mm.ss.csv
+    private String generateTimestampedFilename(String prefix) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HH.mm.ss", java.util.Locale.US);
+        String timestamp = sdf.format(new java.util.Date());
+        return prefix + "_" + timestamp + ".csv";
+    }
+
     // Launch file picker for saving KO results to CSV
     private void saveKOToCSV() {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/csv");
-        intent.putExtra(Intent.EXTRA_TITLE, "KO_results.csv");
+        intent.putExtra(Intent.EXTRA_TITLE, generateTimestampedFilename("KO_results"));
         saveFileLauncher.launch(intent);
     }
 
@@ -1933,12 +1973,7 @@ public class KOFragment extends Fragment {
             matchYPixels.add(roundYPixels);
             matchButtons.add(roundButtons);
         }
-        // Create horizontal container for round columns
-        LinearLayout columnsContainer = new LinearLayout(getContext());
-        columnsContainer.setOrientation(LinearLayout.HORIZONTAL);
-        columnsContainer.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
+        // Create container using FrameLayout for compact bracket positioning
         int totalRounds = matchButtons.size();
         int defaultBoxWidthPx = (int) (120 * density);
         int columnSpacingPx = (int) (8 * density);
@@ -1970,10 +2005,72 @@ public class KOFragment extends Fragment {
             roundWidth[r] = round1Width;
         }
 
-        // Build each round as a separate vertical column
+        // Calculate x-offset for each round column (compact layout)
+        // For each adjacent pair of rounds, check if boxes overlap vertically.
+        // If no vertical overlap, we can shift the next round left to partially overlap horizontally.
+        int[] roundXOffset = new int[totalRounds];
+        // Measure header height (approximate)
+        int headerHeightPx = (int) (24 * density); // header text + padding
+        roundXOffset[0] = 0;
+        for (int r = 1; r < totalRounds; r++) {
+            java.util.List<Float> prevY = matchYPixels.get(r - 1);
+            java.util.List<Float> currY = matchYPixels.get(r);
+            
+            // Check minimum vertical gap between any box in round r and any box in round r-1
+            float minGap = Float.MAX_VALUE;
+            for (float cy : currY) {
+                for (float py : prevY) {
+                    // Gap = distance between closest edges of two boxes
+                    float gap;
+                    if (cy >= py + boxHeightPx) {
+                        gap = cy - (py + boxHeightPx);
+                    } else if (py >= cy + boxHeightPx) {
+                        gap = py - (cy + boxHeightPx);
+                    } else {
+                        gap = -1; // Boxes overlap vertically
+                    }
+                    if (gap < minGap) minGap = gap;
+                }
+            }
+            
+            int step;
+            if (minGap < 0) {
+                // Boxes overlap vertically → full column width separation needed
+                step = round1Width + columnSpacingPx;
+            } else if (minGap < boxHeightPx) {
+                // Small vertical gap → use partial overlap (60% of cell width + gap)
+                step = (int)(round1Width * 0.6f) + columnSpacingPx;
+            } else {
+                // Large vertical gap → significant overlap (35% of cell width + gap)
+                step = (int)(round1Width * 0.35f) + columnSpacingPx;
+            }
+            
+            // Also ensure headers don't overlap: header is at y=0, width=roundWidth
+            // Header of round r starts at roundXOffset[r], header of round r-1 starts at roundXOffset[r-1]
+            // They overlap if roundXOffset[r] < roundXOffset[r-1] + roundWidth[r-1]
+            // We accept header overlap since headers are at the very top and short text
+            // But ensure at minimum the step is > 0
+            if (step < columnSpacingPx) step = columnSpacingPx;
+            
+            roundXOffset[r] = roundXOffset[r - 1] + step;
+        }
+
+        // Calculate total width and height needed
+        int totalWidth = (totalRounds > 0) ? roundXOffset[totalRounds - 1] + round1Width : 0;
+        float maxY = 0;
+        for (java.util.List<Float> ry : matchYPixels) {
+            for (float y : ry) {
+                if (y + boxHeightPx > maxY) maxY = y + boxHeightPx;
+            }
+        }
+        int totalHeight = (int) maxY + headerHeightPx + (int)(8 * density);
+
+        android.widget.FrameLayout columnsContainer = new android.widget.FrameLayout(getContext());
+        columnsContainer.setLayoutParams(new LinearLayout.LayoutParams(totalWidth, totalHeight));
+
+        // Build each round: header + buttons positioned absolutely
         for (int r = 0; r < totalRounds; r++) {
-            LinearLayout roundColumn = new LinearLayout(getContext());
-            roundColumn.setOrientation(LinearLayout.VERTICAL);
+            int xOff = roundXOffset[r];
             
             // Add header for this round
             TextView header = new TextView(getContext());
@@ -1982,53 +2079,42 @@ public class KOFragment extends Fragment {
             header.setGravity(Gravity.CENTER);
             header.setTypeface(null, android.graphics.Typeface.BOLD_ITALIC);
             header.setPadding(8, 4, 8, 4);
-            roundColumn.addView(header);
+            android.widget.FrameLayout.LayoutParams headerParams = new android.widget.FrameLayout.LayoutParams(
+                roundWidth[r], android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+            headerParams.leftMargin = xOff;
+            headerParams.topMargin = 0;
+            header.setLayoutParams(headerParams);
+            columnsContainer.addView(header);
 
             java.util.List<Button> roundBtns = matchButtons.get(r);
             java.util.List<Float> roundYPixels = matchYPixels.get(r);
-            
-            // Track the bottom of the previous button in this column
-            float prevBottomY = 0;
             
             for (int m = 0; m < roundBtns.size(); m++) {
                 Button btn = roundBtns.get(m);
                 float yPx = roundYPixels.get(m);
                 
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
                     roundWidth[r], boxHeightPx);
-                
-                // Calculate top margin: distance from previous button's bottom to this button's top
-                int topMargin;
-                if (m == 0) {
-                    topMargin = (int) yPx;
-                } else {
-                    // yPx is absolute position; prevBottomY is where previous button ended
-                    topMargin = (int) (yPx - prevBottomY);
-                    if (topMargin < 0) topMargin = 0;
-                }
-                params.setMargins(0, topMargin, columnSpacingPx, 0);
+                params.leftMargin = xOff;
+                params.topMargin = (int) yPx + headerHeightPx;
                 btn.setLayoutParams(params);
-                roundColumn.addView(btn);
-                
-                // Update prevBottomY to include this button's height
-                prevBottomY = yPx + boxHeightPx;
+                columnsContainer.addView(btn);
             }
-            
-            columnsContainer.addView(roundColumn);
         }
         
         koBoxLayout.addView(columnsContainer);
         
         // If repechage mode, render losers bracket below main bracket  
         if (koRepechage && !losersRounds.isEmpty()) {
-            renderLosersBracket(koBoxLayout, participantNames, nameToPosition, boxHeightPx, density, colorTop, colorBottom, roundWidth);
+            renderLosersBracket(koBoxLayout, participantNames, nameToPosition, boxHeightPx, density, colorTop, colorBottom, roundWidth, roundXOffset, headerHeightPx);
         }
     }
     
     // Render losers bracket for repechage mode with tree groupings
     private void renderLosersBracket(LinearLayout koBoxLayout, String[] participantNames, 
             java.util.Map<String, Integer> nameToPosition, int boxHeightPx, float density,
-            int colorTop, int colorBottom, int[] mainBracketRoundWidths) {
+            int colorTop, int colorBottom, int[] mainBracketRoundWidths,
+            int[] mainRoundXOffsets, int headerHeightPx) {
         
         // Add separator
         View separator = new View(getContext());
@@ -2096,8 +2182,11 @@ public class KOFragment extends Fragment {
         }
         
         // Pre-calculate Y positions for each match in each tree (bracket-style alignment)
+        // Use expanded vertical spacing to prevent overlaps when columns are compacted
         // Key: treeId -> roundIdx -> matchIdx -> yPosition
         java.util.Map<String, java.util.Map<Integer, java.util.Map<Integer, Float>>> treeMatchYPositions = new java.util.HashMap<>();
+        // Use boxHeightPx as minimum spacing between first-round matches to allow compaction
+        int expandedSpacingPx = boxHeightPx + smallSpacingPx;
         
         for (java.util.Map.Entry<String, java.util.Map<Integer, List<Match>>> treeEntry : treeRoundMatches.entrySet()) {
             String treeId = treeEntry.getKey();
@@ -2111,8 +2200,8 @@ public class KOFragment extends Fragment {
                 for (int m = 0; m < round.size(); m++) {
                     float yPx;
                     if (r == 0) {
-                        // First round: boxes stacked sequentially
-                        yPx = m * (boxHeightPx + smallSpacingPx);
+                        // First round: use expanded spacing to make room for next round compaction
+                        yPx = m * (boxHeightPx + expandedSpacingPx);
                     } else {
                         // Subsequent rounds: center between source matches from previous round
                         java.util.Map<Integer, Float> prevRoundY = treeYPos.get(r - 1);
@@ -2154,95 +2243,76 @@ public class KOFragment extends Fragment {
             cumulativeOffset += maxY + boxHeightPx + treeSeparationPx;
         }
         
-        // Create horizontal container for columns
-        LinearLayout losersContainer = new LinearLayout(getContext());
-        losersContainer.setOrientation(LinearLayout.HORIZONTAL);
-        losersContainer.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        // Create FrameLayout container for compact positioning aligned with main bracket
+        // Calculate x-offset for each column, aligned with main bracket x-offsets
+        int[] losersColXOffsets = new int[maxColumn + 1];
+        for (int col = 0; col <= maxColumn; col++) {
+            if (mainRoundXOffsets != null && col < mainRoundXOffsets.length) {
+                losersColXOffsets[col] = mainRoundXOffsets[col];
+            } else if (mainRoundXOffsets != null && mainRoundXOffsets.length >= 2) {
+                // Extrapolate from last two offsets
+                int lastStep = mainRoundXOffsets[mainRoundXOffsets.length - 1] - mainRoundXOffsets[mainRoundXOffsets.length - 2];
+                losersColXOffsets[col] = mainRoundXOffsets[mainRoundXOffsets.length - 1] + lastStep * (col - mainRoundXOffsets.length + 1);
+            } else {
+                losersColXOffsets[col] = col * (round1Width + columnSpacingPx);
+            }
+        }
         
-        // Add empty column for R1 alignment (no losers in R1)
-        LinearLayout emptyR1Column = new LinearLayout(getContext());
-        emptyR1Column.setOrientation(LinearLayout.VERTICAL);
+        // Calculate total width and height needed
+        int losersMaxX = (maxColumn >= 0) ? losersColXOffsets[maxColumn] + round1Width : round1Width;
+        float losersMaxY = cumulativeOffset;
+        int losersHeaderRowHeight = headerHeightPx;
+
+        android.widget.FrameLayout losersContainer = new android.widget.FrameLayout(getContext());
+        losersContainer.setLayoutParams(new LinearLayout.LayoutParams(
+            losersMaxX, (int) losersMaxY + losersHeaderRowHeight + (int)(16 * density)));
+        
+        // Add column headers
+        // R1 header (empty column)
         TextView emptyHeader = new TextView(getContext());
-        emptyHeader.setText("|| R1");
+        emptyHeader.setText("Round 1");
         emptyHeader.setGravity(Gravity.CENTER);
         emptyHeader.setTypeface(null, android.graphics.Typeface.BOLD_ITALIC);
         emptyHeader.setTextColor(0xFF666666);
         emptyHeader.setPadding(8, 4, 8, 4);
-        emptyR1Column.addView(emptyHeader);
-        // Empty placeholder with R1 width
-        View emptyPlaceholder = new View(getContext());
-        LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(round1Width, boxHeightPx);
-        emptyParams.setMargins(0, 0, columnSpacingPx, 0);
-        emptyPlaceholder.setLayoutParams(emptyParams);
-        emptyR1Column.addView(emptyPlaceholder);
-        losersContainer.addView(emptyR1Column);
+        android.widget.FrameLayout.LayoutParams emptyHeaderParams = new android.widget.FrameLayout.LayoutParams(
+            round1Width, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+        emptyHeaderParams.leftMargin = losersColXOffsets[0];
+        emptyHeaderParams.topMargin = 0;
+        emptyHeader.setLayoutParams(emptyHeaderParams);
+        losersContainer.addView(emptyHeader);
         
-        // Color palette for different trees - start at RGB(200,100,100), increase saturation
-        // Each tree gets progressively more saturated red while keeping luminosity
+        // Color palette for different trees
         int[] treeColors = {
-            0xFFC86464, // RGB(200,100,100) - base reddish
-            0xFFD05050, // More saturated
-            0xFFD83C3C, // More saturated
-            0xFFE02828, // More saturated
-            0xFFE81414, // High saturation
-            0xFFF00000  // Full red
+            0xFFC86464, 0xFFD05050, 0xFFD83C3C, 0xFFE02828, 0xFFE81414, 0xFFF00000
         };
         java.util.Map<String, Integer> treeColorMap = new java.util.HashMap<>();
         int colorIdx = 0;
         
-        // Build each column using FrameLayout for bracket-style Y positioning
+        // Build each column with matches positioned absolutely
         for (int col = 1; col <= maxColumn; col++) {
-            // Use vertical LinearLayout container with FrameLayout for match positioning
-            LinearLayout colContainer = new LinearLayout(getContext());
-            colContainer.setOrientation(LinearLayout.VERTICAL);
+            int xOff = losersColXOffsets[col];
             
-            // Column header showing alignment with main bracket
+            // Column header
             TextView colHeader = new TextView(getContext());
-            colHeader.setText("|| R" + (col + 1));
+            colHeader.setText("Round " + (col + 1));
             colHeader.setGravity(Gravity.CENTER);
             colHeader.setTypeface(null, android.graphics.Typeface.BOLD_ITALIC);
             colHeader.setTextColor(0xFF666666);
             colHeader.setPadding(8, 4, 8, 4);
-            colContainer.addView(colHeader);
+            android.widget.FrameLayout.LayoutParams colHeaderParams = new android.widget.FrameLayout.LayoutParams(
+                round1Width, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+            colHeaderParams.leftMargin = xOff;
+            colHeaderParams.topMargin = 0;
+            colHeader.setLayoutParams(colHeaderParams);
+            losersContainer.addView(colHeader);
             
             java.util.Map<String, List<Match>> treesInCol = columnTreeMatches.get(col);
             int colWidthPx = columnWidths.getOrDefault(col, minBoxWidthPx);
             
             if (treesInCol == null || treesInCol.isEmpty()) {
-                // Empty column placeholder
-                View placeholder = new View(getContext());
-                LinearLayout.LayoutParams phParams = new LinearLayout.LayoutParams(colWidthPx, boxHeightPx);
-                phParams.setMargins(0, 0, columnSpacingPx, 0);
-                placeholder.setLayoutParams(phParams);
-                colContainer.addView(placeholder);
-                losersContainer.addView(colContainer);
                 continue;
             }
-            
-            // Calculate total height needed for this column
-            float maxTotalY = 0;
-            for (String treeId : treesInCol.keySet()) {
-                Float treeOffset = treeYOffsets.get(treeId);
-                java.util.Map<Integer, java.util.Map<Integer, Float>> treeYPos = treeMatchYPositions.get(treeId);
-                if (treeOffset != null && treeYPos != null) {
-                    for (java.util.Map<Integer, Float> roundY : treeYPos.values()) {
-                        for (Float y : roundY.values()) {
-                            if (y != null) {
-                                float totalY = treeOffset + y + boxHeightPx;
-                                if (totalY > maxTotalY) maxTotalY = totalY;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Create FrameLayout for absolute positioning of matches
-            android.widget.FrameLayout matchFrame = new android.widget.FrameLayout(getContext());
-            LinearLayout.LayoutParams frameParams = new LinearLayout.LayoutParams(
-                colWidthPx, (int) maxTotalY + (int)(16 * density));
-            frameParams.setMargins(0, 0, columnSpacingPx, 0);
-            matchFrame.setLayoutParams(frameParams);
             
             for (java.util.Map.Entry<String, List<Match>> entry : treesInCol.entrySet()) {
                 String treeId = entry.getKey();
@@ -2267,16 +2337,15 @@ public class KOFragment extends Fragment {
                 treeHeader.setTextColor(treeColor);
                 treeHeader.setTypeface(null, android.graphics.Typeface.ITALIC);
                 treeHeader.setPadding(2, 0, 2, 0);
-                android.widget.FrameLayout.LayoutParams headerParams = new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams treeHeaderParams = new android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
                     android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
-                headerParams.topMargin = (int) (treeYOffset - (int)(14 * density));
-                if (headerParams.topMargin < 0) headerParams.topMargin = 0;
-                headerParams.leftMargin = 0;
-                treeHeader.setLayoutParams(headerParams);
-                // Only add header if there's room (Y offset > 0 or first tree)
+                treeHeaderParams.topMargin = (int) (treeYOffset - (int)(14 * density)) + losersHeaderRowHeight;
+                if (treeHeaderParams.topMargin < losersHeaderRowHeight) treeHeaderParams.topMargin = losersHeaderRowHeight;
+                treeHeaderParams.leftMargin = xOff;
+                treeHeader.setLayoutParams(treeHeaderParams);
                 if (treeYOffset > 10 * density) {
-                    matchFrame.addView(treeHeader);
+                    losersContainer.addView(treeHeader);
                 }
                 
                 // Add match buttons for this tree
@@ -2287,7 +2356,6 @@ public class KOFragment extends Fragment {
                     String p1Name = getLosersName(match.p1, participantNames);
                     String p2Name = getLosersName(match.p2, participantNames);
                     
-                    // Check if names are resolved (actual participant names) or placeholders
                     boolean p1IsPlaceholder = isPlaceholderName(p1Name);
                     boolean p2IsPlaceholder = isPlaceholderName(p2Name);
                     boolean hasPlaceholder = p1IsPlaceholder || p2IsPlaceholder;
@@ -2315,7 +2383,6 @@ public class KOFragment extends Fragment {
                     
                     matchBtn.setTextColor(Color.BLACK);
                     matchBtn.setText(android.text.Html.fromHtml(label));
-                    // Use same text size as winners bracket for all buttons
                     matchBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSizeSp);
                     matchBtn.setSingleLine(true);
                     matchBtn.setPadding(8, 0, 8, 0);
@@ -2334,7 +2401,6 @@ public class KOFragment extends Fragment {
                     float matchY = 0;
                     java.util.Map<Integer, java.util.Map<Integer, Float>> treeYPos = treeMatchYPositions.get(treeId);
                     if (treeYPos != null) {
-                        // Find which round this match belongs to in the tree
                         RepechageTree tree = findTreeById(treeId);
                         if (tree != null) {
                             for (int r = 0; r < tree.rounds.size(); r++) {
@@ -2354,21 +2420,17 @@ public class KOFragment extends Fragment {
                     
                     android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
                         colWidthPx, boxHeightPx);
-                    params.topMargin = (int) (treeYOffset + matchY);
-                    params.leftMargin = 0;
+                    params.topMargin = (int) (treeYOffset + matchY) + losersHeaderRowHeight;
+                    params.leftMargin = xOff;
                     matchBtn.setLayoutParams(params);
-                    matchFrame.addView(matchBtn);
+                    losersContainer.addView(matchBtn);
                 }
             }
-            
-            colContainer.addView(matchFrame);
-            losersContainer.addView(colContainer);
         }
         
-        // Add Grand Final column if set
+        // Add Grand Final if set - positioned to the right of the last column
         if (grandFinalMatch != null) {
-            LinearLayout gfColumn = new LinearLayout(getContext());
-            gfColumn.setOrientation(LinearLayout.VERTICAL);
+            int gfXOff = losersMaxX + columnSpacingPx;
             
             TextView gfHeader = new TextView(getContext());
             gfHeader.setText("Grand Final");
@@ -2376,7 +2438,12 @@ public class KOFragment extends Fragment {
             gfHeader.setGravity(Gravity.CENTER);
             gfHeader.setTypeface(null, android.graphics.Typeface.BOLD);
             gfHeader.setPadding(8, 4, 8, 4);
-            gfColumn.addView(gfHeader);
+            android.widget.FrameLayout.LayoutParams gfHeaderParams = new android.widget.FrameLayout.LayoutParams(
+                round1Width, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+            gfHeaderParams.leftMargin = gfXOff;
+            gfHeaderParams.topMargin = 0;
+            gfHeader.setLayoutParams(gfHeaderParams);
+            losersContainer.addView(gfHeader);
             
             Button gfBtn = new Button(getContext());
             String gfP1 = getLosersName(grandFinalMatch.p1, participantNames).toUpperCase();
@@ -2401,18 +2468,20 @@ public class KOFragment extends Fragment {
                 return true;
             });
             
-            // Measure Grand Final button width
             android.graphics.Paint gfPaint = new android.graphics.Paint();
             gfPaint.setTextSize(textSizeSp * density);
             int gfWidth = Math.max((int) gfPaint.measureText(gfLabel) + (int)(32 * density), minBoxWidthPx);
             
-            LinearLayout.LayoutParams gfParams = new LinearLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams gfParams = new android.widget.FrameLayout.LayoutParams(
                 gfWidth, boxHeightPx);
-            gfParams.setMargins(0, (int)(16 * density), columnSpacingPx, 0);
+            gfParams.leftMargin = gfXOff;
+            gfParams.topMargin = losersHeaderRowHeight + (int)(16 * density);
             gfBtn.setLayoutParams(gfParams);
-            gfColumn.addView(gfBtn);
+            losersContainer.addView(gfBtn);
             
-            losersContainer.addView(gfColumn);
+            // Update container width to include Grand Final
+            losersContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                gfXOff + gfWidth, (int) losersMaxY + losersHeaderRowHeight + (int)(16 * density)));
         }
         
         koBoxLayout.addView(losersContainer);
@@ -3914,13 +3983,34 @@ public class KOFragment extends Fragment {
         android.app.Dialog dialog = new android.app.Dialog(getContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         
+        // Create horizontal layout with vertical label + QR code
+        LinearLayout container = new LinearLayout(getContext());
+        container.setOrientation(LinearLayout.HORIZONTAL);
+        container.setBackgroundColor(Color.WHITE);
+        container.setGravity(Gravity.CENTER);
+        
+        // Vertical label "KO" on the left
+        TextView label = new TextView(getContext());
+        label.setText("KO");
+        label.setTextColor(0xFF333333);
+        label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 24);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+        label.setRotation(-90);
+        label.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        labelParams.gravity = Gravity.CENTER;
+        label.setLayoutParams(labelParams);
+        container.addView(label);
+        
         android.widget.ImageView imageView = new android.widget.ImageView(getContext());
         imageView.setImageBitmap(qrBitmap);
         imageView.setScaleType(android.widget.ImageView.ScaleType.CENTER);
-        imageView.setBackgroundColor(Color.WHITE);
-        imageView.setOnClickListener(v -> dialog.dismiss());
+        container.addView(imageView);
         
-        dialog.setContentView(imageView);
+        container.setOnClickListener(v -> dialog.dismiss());
+        
+        dialog.setContentView(container);
         dialog.getWindow().setLayout(
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
             android.view.WindowManager.LayoutParams.MATCH_PARENT
