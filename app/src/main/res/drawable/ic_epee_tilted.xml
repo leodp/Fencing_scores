@@ -11,7 +11,7 @@
     
     <!-- Background circle -->
     <path
-        android:fillColor="#FF6200EA"
+        android:fillColor="#FF001582"
         android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"/>
     
     <!-- Epee blade (tilted 25° clockwise from vertical) -->

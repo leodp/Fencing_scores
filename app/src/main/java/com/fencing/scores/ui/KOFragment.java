@@ -32,7 +32,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.CheckBox;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TableRow;
@@ -142,6 +143,29 @@ public class KOFragment extends Fragment {
         }
     }
     
+    // A KO group represents one independent mini-bracket in Quick KO / Mix-Rounds modes
+    private static class KOGroup {
+        String groupId; // e.g., "G1", "G2", ...
+        String title; // Display title like "Quick 1:2" or "Mix P=1"
+        int positionStart; // First final position (1-based) this group determines
+        int positionEnd;   // Last final position this group determines
+        String[] participants; // Participant names (may include "Empty")
+        int koSize; // Power-of-2 bracket size
+        List<List<Match>> rounds = new ArrayList<>();
+        
+        KOGroup(String groupId, String title, int posStart, int posEnd, String[] participants) {
+            this.groupId = groupId;
+            this.title = title;
+            this.positionStart = posStart;
+            this.positionEnd = posEnd;
+            this.participants = participants;
+            // Round up to next power of 2
+            int n = 1;
+            while (n < participants.length) n *= 2;
+            this.koSize = n;
+        }
+    }
+    
     private List<List<Match>> koRounds = new ArrayList<>(); // Main bracket
     private List<List<Match>> losersRounds = new ArrayList<>(); // Legacy losers bracket (kept for compatibility)
     private RepechageTree mainTree = null; // Main tree with all sub-trees for repechage
@@ -149,13 +173,28 @@ public class KOFragment extends Fragment {
     private Match grandFinalMatch = null; // Grand Final: Main winner vs Losers winner
     private Match thirdPlaceMatch = null; // Third place match (for repechage)
     private boolean koRepechage = false;
+    private int koModus = 0; // 0=KO, 1=KO+Repechage, 2=Quick1:2, 3=Quick1-4, 4=Quick1-8, 5=Mix1:1, 6=Mix1-2:1-2, 7=Mix1-4:1-4
+    private static final String[] KO_MODUS_LABELS = {
+        "KO",
+        "KO with Repechage",
+        "Quick KO 1:2 3:4 5:6...",
+        "Quick KO 1-4 5-8 9-12...",
+        "Quick KO 1-8 9-16 17-24...",
+        "Mix-Rounds 1:1 2:2 3:3",
+        "Mix-Rounds 1-2:1-2 3-4:3-4",
+        "Mix-Rounds 1-4:1-4 5-8:5-8"
+    };
+    // Multi-tree data for Quick KO and Mix-Rounds modes
+    private java.util.List<KOGroup> koGroups = new ArrayList<>(); // Each group is a separate mini KO bracket
     private String[] koParticipantNames = null; // Local copy of participant names for KO (to avoid affecting RoundFragment)
     private int koNrPart = 0; // Local copy of participant count
     private ScoresViewModel scoresViewModel;
     private ActivityResultLauncher<Intent> saveFileLauncher;
     private ActivityResultLauncher<Intent> replaceFileLauncher;
     private LinearLayout koBoxLayoutRef; // Keep reference for onResume
-    private CheckBox repechageCheckboxRef; // Keep reference for restore
+    private Spinner modusSpinnerRef; // Keep reference for restore
+    private boolean spinnerInitializing = false; // Flag to ignore spinner changes during init sizing trick
+    private int lastRenderedColorIdx = -1; // Track last rendered color to detect changes on resume
     
     // QR Scanner launcher for KO data
     private final ActivityResultLauncher<ScanOptions> qrScannerLauncher = 
@@ -180,13 +219,22 @@ public class KOFragment extends Fragment {
         if (koRounds.isEmpty() && koBoxLayoutRef != null) {
             tryAutoRestoreFromBackup();
         }
+        // Re-render if color changed while on another page
+        int currentColorIdx = 0;
+        try {
+            Integer val = scoresViewModel.getColorCycleIndex().getValue();
+            if (val != null) currentColorIdx = val;
+        } catch (Exception e) {}
+        if (currentColorIdx != lastRenderedColorIdx && koBoxLayoutRef != null) {
+            renderKOTable(koBoxLayoutRef);
+        }
     }
     
     @Override
     public void onPause() {
         super.onPause();
         // Auto-backup KO state when leaving fragment
-        if (!koRounds.isEmpty()) {
+        if (!koRounds.isEmpty() || (koModus >= 2 && !koGroups.isEmpty())) {
             backupKOTree();
             android.util.Log.d("KOFragment", "Auto-backup on pause");
         }
@@ -294,14 +342,18 @@ public class KOFragment extends Fragment {
             String metaLine = reader.readLine();
             if (metaLine == null) { reader.close(); return; }
             
-            // Parse metadata line: #META,koSize,repechage
+            // Parse metadata line: #META,koSize,repechage[,modus]
             int koSize = 8;
             boolean repechage = false;
+            int restoredModus = 0;
             if (metaLine.startsWith("#META,")) {
                 String[] metaParts = metaLine.split(",");
                 if (metaParts.length >= 3) {
                     try { koSize = Integer.parseInt(metaParts[1].trim()); } catch (Exception e) {}
                     repechage = "true".equalsIgnoreCase(metaParts[2].trim());
+                }
+                if (metaParts.length >= 4) {
+                    try { restoredModus = Integer.parseInt(metaParts[3].trim()); } catch (Exception e) {}
                 }
                 // Skip header line
                 reader.readLine();
@@ -331,196 +383,20 @@ public class KOFragment extends Fragment {
                 if (koSize < 4) koSize = 8;
             }
             
-            android.util.Log.d("KOFragment", "Auto-restore: koSize=" + koSize + ", repechage=" + repechage);
+            android.util.Log.d("KOFragment", "Auto-restore: koSize=" + koSize + ", repechage=" + repechage + ", modus=" + restoredModus);
             koRepechage = repechage;
+            koModus = restoredModus;
             koNrPart = koSize; // Set local nrPart from backup
             
             // Load participant names from Merged_backup.csv if available
             loadParticipantNamesFromMerged();
             
-            // Reload KO tree structure
-            loadKOTree(koSize, koRepechage);
+            // Use processRestoredMatches for consistent restore logic
+            java.util.List<String> allLines = new java.util.ArrayList<>();
+            allLines.add(metaLine);
+            allLines.addAll(lines);
+            processRestoredMatches(allLines);
             
-            // Apply saved data
-            for (String l : lines) {
-                String[] parts = l.split(",");
-                if (parts.length < 6) continue;
-                try {
-                    // New format: Tree,Round,Match,P1,Score1,P2,Score2,Winner
-                    String treeId = parts[0].trim();
-                    int roundNum = Integer.parseInt(parts[1].trim()) - 1;
-                    int matchNum = Integer.parseInt(parts[2].trim()) - 1;
-                    String p1 = parts[3].trim();
-                    String scoreStr1 = parts[4].trim();
-                    String p2 = parts[5].trim();
-                    String scoreStr2 = parts.length > 6 ? parts[6].trim() : "";
-                    
-                    int score1 = scoreStr1.isEmpty() ? -1 : Integer.parseInt(scoreStr1);
-                    int score2 = scoreStr2.isEmpty() ? -1 : Integer.parseInt(scoreStr2);
-                    String winner = "";
-                    if (score1 > score2) winner = p1;
-                    else if (score2 > score1) winner = p2;
-                    
-                    if (treeId.equals("R1")) {
-                        // Main bracket
-                        if (roundNum >= 0 && roundNum < koRounds.size()) {
-                            for (Match m : koRounds.get(roundNum)) {
-                                if (m.matchIdx == matchNum) {
-                                    m.p1 = p1;
-                                    m.p2 = p2;
-                                    m.score1 = score1;
-                                    m.score2 = score2;
-                                    m.winner = winner;
-                                    break;
-                                }
-                            }
-                        }
-                    } else {
-                        // Repechage tree
-                        RepechageTree tree = findTreeById(treeId);
-                        if (tree != null && roundNum >= 0 && roundNum < tree.rounds.size()) {
-                            for (Match m : tree.rounds.get(roundNum)) {
-                                if (m.matchIdx == matchNum) {
-                                    m.p1 = p1;
-                                    m.p2 = p2;
-                                    m.score1 = score1;
-                                    m.score2 = score2;
-                                    m.winner = winner;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    // Try old format: Round,Match,P1,Score1,P2,Score2,Winner (no Tree column)
-                    try {
-                        int roundNum = Integer.parseInt(parts[0].trim()) - 1;
-                        int matchNum = Integer.parseInt(parts[1].trim()) - 1;
-                        String p1 = parts[2].trim();
-                        String scoreStr1 = parts[3].trim();
-                        String p2 = parts[4].trim();
-                        String scoreStr2 = parts.length > 5 ? parts[5].trim() : "";
-                        
-                        if (roundNum >= 0 && roundNum < koRounds.size()) {
-                            for (Match m : koRounds.get(roundNum)) {
-                                if (m.matchIdx == matchNum) {
-                                    m.p1 = p1;
-                                    m.p2 = p2;
-                                    m.score1 = scoreStr1.isEmpty() ? -1 : Integer.parseInt(scoreStr1);
-                                    m.score2 = scoreStr2.isEmpty() ? -1 : Integer.parseInt(scoreStr2);
-                                    if (m.score1 > m.score2) m.winner = p1;
-                                    else if (m.score2 > m.score1) m.winner = p2;
-                                    break;
-                                }
-                            }
-                        }
-                    } catch (Exception e2) {}
-                }
-            }
-            
-            // Auto-advance Empty matches and propagawte winners
-            String[] participantNames = getKOParticipantNames();
-            if (participantNames != null) {
-                autoAdvanceEmptyMatches(participantNames);
-                if (koRepechage && !losersRounds.isEmpty()) {
-                    propagateLosersToLosersBracket(participantNames);
-                    autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-                }
-            }
-            propagateKOWinners();
-            
-            // Update checkbox state to match restored repechage
-            if (repechageCheckboxRef != null) {
-                repechageCheckboxRef.setOnCheckedChangeListener(null);
-                repechageCheckboxRef.setChecked(koRepechage);
-                repechageCheckboxRef.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    koRepechage = isChecked;
-                    int nrPartVal = getKONrPart();
-                    
-                    // Save ALL match results before reloading using round/match indices
-                    java.util.Map<String, int[]> savedResults = new java.util.HashMap<>();
-                    for (int r = 0; r < koRounds.size(); r++) {
-                        List<Match> round = koRounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            if (m.score1 >= 0 && m.score2 >= 0) {
-                                String key = "R1|R" + r + "|M" + mi;
-                                savedResults.put(key, new int[]{m.score1, m.score2});
-                            }
-                        }
-                    }
-                    for (RepechageTree tree : allRepechageTrees) {
-                        if (tree.treeId.equals("R1")) continue;
-                        for (int r = 0; r < tree.rounds.size(); r++) {
-                            List<Match> round = tree.rounds.get(r);
-                            for (int mi = 0; mi < round.size(); mi++) {
-                                Match m = round.get(mi);
-                                if (m.score1 >= 0 && m.score2 >= 0) {
-                                    String key = tree.treeId + "|R" + r + "|M" + mi;
-                                    savedResults.put(key, new int[]{m.score1, m.score2});
-                                }
-                            }
-                        }
-                    }
-                    
-                    loadKOTree(nrPartVal, koRepechage);
-                    
-                    // Restore saved match results to main bracket
-                    for (int r = 0; r < koRounds.size(); r++) {
-                        List<Match> round = koRounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            String key = "R1|R" + r + "|M" + mi;
-                            if (savedResults.containsKey(key)) {
-                                int[] scores = savedResults.get(key);
-                                m.score1 = scores[0];
-                                m.score2 = scores[1];
-                                if (m.score1 > m.score2) {
-                                    m.winner = getKOName(m.p1, getKOParticipantNames());
-                                } else if (m.score2 > m.score1) {
-                                    m.winner = getKOName(m.p2, getKOParticipantNames());
-                                }
-                            }
-                        }
-                    }
-                    // Restore saved match results to all repechage trees
-                    for (RepechageTree tree : allRepechageTrees) {
-                        if (tree.treeId.equals("R1")) continue;
-                        for (int r = 0; r < tree.rounds.size(); r++) {
-                            List<Match> round = tree.rounds.get(r);
-                            for (int mi = 0; mi < round.size(); mi++) {
-                                Match m = round.get(mi);
-                                String key = tree.treeId + "|R" + r + "|M" + mi;
-                                if (savedResults.containsKey(key)) {
-                                    int[] scores = savedResults.get(key);
-                                    m.score1 = scores[0];
-                                    m.score2 = scores[1];
-                                    if (m.score1 > m.score2) {
-                                        m.winner = getKOName(m.p1, getKOParticipantNames());
-                                    } else if (m.score2 > m.score1) {
-                                        m.winner = getKOName(m.p2, getKOParticipantNames());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    String[] pNames = getKOParticipantNames();
-                    if (pNames != null) {
-                        autoAdvanceEmptyMatches(pNames);
-                        if (koRepechage && !losersRounds.isEmpty()) {
-                            propagateLosersToLosersBracket(pNames);
-                            autoAdvanceEmptyMatchesInLosersBracket(pNames);
-                        }
-                    }
-                    propagateKOWinners();
-                    renderKOTable(koBoxLayoutRef);
-                });
-            }
-            
-            if (koBoxLayoutRef != null) {
-                renderKOTable(koBoxLayoutRef);
-            }
             android.util.Log.i("KOFragment", "Auto-restored " + lines.size() + " matches from KO_backup.csv");
             
         } catch (Exception e) {
@@ -600,12 +476,40 @@ public class KOFragment extends Fragment {
         Button qrOutBtn = root.findViewById(R.id.ko_qrOutBtn);
         Button qrInBtn = root.findViewById(R.id.ko_qrInBtn);
         Button saveBtn = root.findViewById(R.id.ko_saveBtn);
-        CheckBox repechageCheckbox = root.findViewById(R.id.ko_repechageCheckbox);
-        repechageCheckboxRef = repechageCheckbox; // Save reference for restore
+        Spinner modusSpinner = root.findViewById(R.id.ko_modusSpinner);
+        modusSpinnerRef = modusSpinner; // Save reference for restore
+        
+        // Setup Spinner with KO modus entries
+        setupModusSpinner(modusSpinner, koBoxLayout);
+        
+        // Fix spinner width: measure the longest label text and set minimum width
+        // This prevents the spinner from being too narrow when showing short text like "KO"
+        modusSpinner.post(() -> {
+            float d = getResources().getDisplayMetrics().density;
+            android.graphics.Paint paint = new android.graphics.Paint();
+            paint.setTextSize(modusSpinner.getChildAt(0) instanceof TextView ?
+                ((TextView) modusSpinner.getChildAt(0)).getTextSize() : 14 * d);
+            paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            float maxWidth = 0;
+            for (String label : KO_MODUS_LABELS) {
+                float w = paint.measureText(label);
+                if (w > maxWidth) maxWidth = w;
+            }
+            // Add padding for spinner arrow/dropdown indicator
+            int minWidth = (int)(maxWidth + 48 * d);
+            modusSpinner.setMinimumWidth(minWidth);
+            modusSpinner.requestLayout();
+        });
 
         // Observe ViewModel and update KO table reactively
         scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> renderKOTable(koBoxLayout));
         scoresViewModel.getNrPart().observe(getViewLifecycleOwner(), n -> renderKOTable(koBoxLayout));
+        scoresViewModel.getColorCycleIndex().observe(getViewLifecycleOwner(), idx -> {
+            if (isResumed()) {
+                renderKOTable(koBoxLayout);
+            }
+            // Otherwise colors will be picked up in onResume
+        });
         
         // Observe request for rankings calculation (triggered when Final page becomes visible)
         scoresViewModel.getRequestKORankings().observe(getViewLifecycleOwner(), request -> {
@@ -630,7 +534,7 @@ public class KOFragment extends Fragment {
             new android.app.AlertDialog.Builder(getContext())
                 .setTitle("Reload KO from Merged?")
                 .setMessage("This will reset all KO rounds. Continue?")
-                .setPositiveButton("Yes", (dialog, which) -> reloadFromMerged(koBoxLayout))
+                .setPositiveButton("Yes", (dialog, which) -> reloadFromMergedWithModus(koBoxLayout))
                 .setNegativeButton("Cancel", null)
                 .show();
         });
@@ -655,98 +559,126 @@ public class KOFragment extends Fragment {
         // SAVE button: save KO results to CSV in Downloads
         saveBtn.setOnClickListener(v -> saveKOToCSV());
 
-        // Repechage checkbox: reload KO tree with/without repechage, preserving match results
-        repechageCheckbox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            koRepechage = isChecked;
-            int nrPartVal = getKONrPart();
-            
-            // Save ALL match results before reloading using round/match indices (stable across bracket types)
-            java.util.Map<String, int[]> savedResults = new java.util.HashMap<>();
-            // Save main bracket by round and match index
-            for (int r = 0; r < koRounds.size(); r++) {
-                List<Match> round = koRounds.get(r);
-                for (int mi = 0; mi < round.size(); mi++) {
-                    Match m = round.get(mi);
-                    if (m.score1 >= 0 && m.score2 >= 0) {
-                        String key = "R1|R" + r + "|M" + mi;
-                        savedResults.put(key, new int[]{m.score1, m.score2});
-                    }
-                }
-            }
-            // Save all repechage trees by round and match index
-            for (RepechageTree tree : allRepechageTrees) {
-                if (tree.treeId.equals("R1")) continue; // Skip main tree, already saved above
-                for (int r = 0; r < tree.rounds.size(); r++) {
-                    List<Match> round = tree.rounds.get(r);
-                    for (int mi = 0; mi < round.size(); mi++) {
-                        Match m = round.get(mi);
-                        if (m.score1 >= 0 && m.score2 >= 0) {
-                            String key = tree.treeId + "|R" + r + "|M" + mi;
-                            savedResults.put(key, new int[]{m.score1, m.score2});
-                        }
-                    }
-                }
-            }
-            
-            loadKOTree(nrPartVal, koRepechage);
-            
-            // Restore saved match results to main bracket
-            for (int r = 0; r < koRounds.size(); r++) {
-                List<Match> round = koRounds.get(r);
-                for (int mi = 0; mi < round.size(); mi++) {
-                    Match m = round.get(mi);
-                    String key = "R1|R" + r + "|M" + mi;
-                    if (savedResults.containsKey(key)) {
-                        int[] scores = savedResults.get(key);
-                        m.score1 = scores[0];
-                        m.score2 = scores[1];
-                        if (m.score1 > m.score2) {
-                            m.winner = getKOName(m.p1, getKOParticipantNames());
-                        } else if (m.score2 > m.score1) {
-                            m.winner = getKOName(m.p2, getKOParticipantNames());
-                        }
-                    }
-                }
-            }
-            // Restore saved match results to all repechage trees
-            for (RepechageTree tree : allRepechageTrees) {
-                if (tree.treeId.equals("R1")) continue;
-                for (int r = 0; r < tree.rounds.size(); r++) {
-                    List<Match> round = tree.rounds.get(r);
-                    for (int mi = 0; mi < round.size(); mi++) {
-                        Match m = round.get(mi);
-                        String key = tree.treeId + "|R" + r + "|M" + mi;
-                        if (savedResults.containsKey(key)) {
-                            int[] scores = savedResults.get(key);
-                            m.score1 = scores[0];
-                            m.score2 = scores[1];
-                            if (m.score1 > m.score2) {
-                                m.winner = getKOName(m.p1, getKOParticipantNames());
-                            } else if (m.score2 > m.score1) {
-                                m.winner = getKOName(m.p2, getKOParticipantNames());
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Auto-advance Empty matches and propagate to losers bracket
-            String[] participantNames = getKOParticipantNames();
-            if (participantNames != null) {
-                autoAdvanceEmptyMatches(participantNames);
-                if (koRepechage && !losersRounds.isEmpty()) {
-                    propagateLosersToLosersBracket(participantNames);
-                    autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-                }
-            }
-            propagateKOWinners();
-            renderKOTable(koBoxLayout);
-        });
-
         // Initial render
         renderKOTable(koBoxLayout);
         
         return root;
+    }
+    
+    // Setup the KO Modus Spinner with entries, disabling Mix-Rounds if only 1 participant has P=1
+    private void setupModusSpinner(Spinner spinner, LinearLayout koBoxLayout) {
+        // Check if Mix-Rounds should be enabled
+        boolean mixEnabled = isMixRoundsAvailable();
+        
+        // Create adapter with custom enabled/disabled items and styling
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(requireContext(),
+                android.R.layout.simple_spinner_item, KO_MODUS_LABELS) {
+            @Override
+            public boolean isEnabled(int position) {
+                if (position >= 5 && !isMixRoundsAvailable()) return false;
+                return true;
+            }
+            @Override
+            public boolean areAllItemsEnabled() { return false; }
+            @Override
+            public android.view.View getView(int position, android.view.View convertView, android.view.ViewGroup parent) {
+                android.view.View view = super.getView(position, convertView, parent);
+                TextView tv = (TextView) view;
+                tv.setTextColor(0xFFFFFFFF); // White text
+                tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                return view;
+            }
+            @Override
+            public android.view.View getDropDownView(int position, android.view.View convertView, android.view.ViewGroup parent) {
+                android.view.View view = super.getDropDownView(position, convertView, parent);
+                TextView tv = (TextView) view;
+                if (position >= 5 && !isMixRoundsAvailable()) {
+                    tv.setTextColor(0xFF666666); // Gray out disabled items
+                } else {
+                    tv.setTextColor(0xFFFFFFFF); // White text on black
+                }
+                tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                return view;
+            }
+        };
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(koModus);
+        
+        spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int position, long id) {
+                if (spinnerInitializing) return; // Skip during init sizing trick
+                if (position >= 5 && !isMixRoundsAvailable()) {
+                    // Revert to previous selection
+                    spinner.setSelection(koModus);
+                    Toast.makeText(getContext(), "Mix-Rounds requires multiple participants with P=1 in Merged", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (position == koModus) return;
+                
+                int oldModus = koModus;
+                koModus = position;
+                koRepechage = (position == 1);
+                
+                // Clear existing data and reload
+                koGroups.clear();
+                koRounds.clear();
+                losersRounds.clear();
+                allRepechageTrees.clear();
+                mainTree = null;
+                grandFinalMatch = null;
+                thirdPlaceMatch = null;
+                
+                // For modes >= 2, always try to load from Merged (even first time)
+                if (position >= 2) {
+                    reloadFromMergedWithModus(koBoxLayout);
+                } else if (koNrPart > 0 && koParticipantNames != null) {
+                    reloadFromMergedWithModus(koBoxLayout);
+                } else {
+                    renderKOTable(koBoxLayout);
+                }
+            }
+            
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+    }
+    
+    // Check if Mix-Rounds modes should be available
+    private boolean isMixRoundsAvailable() {
+        try {
+            java.io.File filesDir = requireContext().getFilesDir();
+            java.io.File mergedBackup = new java.io.File(filesDir, "Merged_backup.csv");
+            if (!mergedBackup.exists()) return false;
+            
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(mergedBackup));
+            String headerLine = reader.readLine();
+            if (headerLine == null) { reader.close(); return false; }
+            
+            String[] header = headerLine.split(",");
+            int idxP = -1;
+            for (int i = 0; i < header.length; i++) {
+                if (header[i].trim().equals("P")) { idxP = i; break; }
+            }
+            if (idxP < 0) { reader.close(); return false; }
+            
+            int countP1 = 0;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] tokens = line.split(",", -1);
+                if (tokens.length > idxP && tokens[1] != null && !tokens[1].trim().isEmpty()) {
+                    try {
+                        int pVal = Integer.parseInt(tokens[idxP].trim());
+                        if (pVal == 1) countP1++;
+                    } catch (Exception e) {}
+                }
+            }
+            reader.close();
+            return countP1 > 1;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // Load KO tree from JSON asset (ko_8.json or ko_h8.json)
@@ -1096,6 +1028,404 @@ public class KOFragment extends Fragment {
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error loading Merged_backup.csv: " + e.getMessage());
             Toast.makeText(getContext(), "Failed to load Merged backup: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+    
+    // Reload from Merged according to current KO modus
+    private void reloadFromMergedWithModus(LinearLayout koBoxLayout) {
+        if (koModus <= 1) {
+            // Standard KO or KO with Repechage - use existing logic
+            reloadFromMerged(koBoxLayout);
+            return;
+        }
+        
+        try {
+            // Load participant data from Merged_backup.csv
+            java.util.List<String[]> mergedData = loadMergedParticipantData();
+            if (mergedData == null || mergedData.isEmpty()) {
+                Toast.makeText(getContext(), "No participants found in Merged", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            koGroups.clear();
+            koRounds.clear();
+            losersRounds.clear();
+            allRepechageTrees.clear();
+            mainTree = null;
+            
+            if (koModus >= 2 && koModus <= 4) {
+                buildQuickKOGroups(mergedData);
+            } else if (koModus >= 5 && koModus <= 7) {
+                buildMixRoundsGroups(mergedData);
+            }
+            
+            // Build KO trees for each group
+            for (KOGroup group : koGroups) {
+                buildGroupKOTree(group);
+                // Auto-advance Empty matches
+                autoAdvanceEmptyMatchesInGroup(group);
+            }
+            
+            // Store all participant names
+            java.util.List<String> allNames = new java.util.ArrayList<>();
+            for (KOGroup group : koGroups) {
+                for (String name : group.participants) {
+                    if (!name.equals("Empty")) allNames.add(name);
+                }
+            }
+            koParticipantNames = allNames.toArray(new String[0]);
+            koNrPart = allNames.size();
+            
+            renderKOTable(koBoxLayout);
+            Toast.makeText(getContext(), "Loaded " + koGroups.size() + " groups for " + KO_MODUS_LABELS[koModus], Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            android.util.Log.e("KOFragment", "Error in reloadFromMergedWithModus: " + e.getMessage(), e);
+            Toast.makeText(getContext(), "KO Error: " + e.getClass().getSimpleName() + ": " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+    
+    // Load all participant data from Merged_backup.csv (returns list of CSV row arrays)
+    private java.util.List<String[]> loadMergedParticipantData() {
+        try {
+            java.io.File filesDir = requireContext().getFilesDir();
+            java.io.File mergedBackup = new java.io.File(filesDir, "Merged_backup.csv");
+            if (!mergedBackup.exists()) return null;
+            
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(mergedBackup));
+            String headerLine = reader.readLine();
+            if (headerLine == null) { reader.close(); return null; }
+            
+            String[] header = headerLine.split(",");
+            int idxFinalPos = -1, idxP = -1;
+            for (int i = 0; i < header.length; i++) {
+                if (header[i].trim().equals("FinalPos")) idxFinalPos = i;
+                if (header[i].trim().equals("P")) idxP = i;
+            }
+            
+            java.util.List<String[]> participants = new java.util.ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] tokens = line.split(",", -1);
+                if (tokens.length >= 2 && tokens[1] != null && !tokens[1].trim().isEmpty()) {
+                    participants.add(tokens);
+                }
+            }
+            reader.close();
+            
+            // Sort by FinalPos
+            if (idxFinalPos >= 0) {
+                final int fpIdx = idxFinalPos;
+                java.util.Collections.sort(participants, (a, b) -> {
+                    int posA = 999, posB = 999;
+                    try { if (fpIdx < a.length) posA = Integer.parseInt(a[fpIdx].trim()); } catch (Exception e) {}
+                    try { if (fpIdx < b.length) posB = Integer.parseInt(b[fpIdx].trim()); } catch (Exception e) {}
+                    return Integer.compare(posA, posB);
+                });
+            }
+            
+            return participants;
+        } catch (Exception e) {
+            android.util.Log.e("KOFragment", "Error loading Merged data: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    // Get FinalPos column index from Merged header
+    private int getMergedColumnIndex(String[] header, String columnName) {
+        for (int i = 0; i < header.length; i++) {
+            if (header[i].trim().equals(columnName)) return i;
+        }
+        return -1;
+    }
+    
+    // Build Quick KO groups from FinalPos-sorted participants
+    private void buildQuickKOGroups(java.util.List<String[]> mergedData) {
+        int groupSize;
+        switch (koModus) {
+            case 2: groupSize = 2; break;  // Quick KO 1:2 3:4 ...
+            case 3: groupSize = 4; break;  // Quick KO 1-4 5-8 ...
+            case 4: groupSize = 8; break;  // Quick KO 1-8 9-16 ...
+            default: groupSize = 2; break;
+        }
+        
+        int totalParticipants = mergedData.size();
+        int groupCount = 0;
+        
+        for (int i = 0; i < totalParticipants; i += groupSize) {
+            int end = Math.min(i + groupSize, totalParticipants);
+            java.util.List<String> groupNames = new java.util.ArrayList<>();
+            for (int j = i; j < end; j++) {
+                groupNames.add(mergedData.get(j)[1].trim());
+            }
+            
+            // Pad to next power of 2 with "Empty"
+            int n = 1;
+            while (n < groupNames.size()) n *= 2;
+            while (groupNames.size() < n) groupNames.add("Empty");
+            
+            String groupId = "G" + (++groupCount);
+            // Generate title: "Quick 1:2" for mode 2, "Quick 1-4" for modes 3-4
+            String title;
+            if (koModus == 2) {
+                title = "Quick " + (i + 1) + ":" + end;
+            } else {
+                title = "Quick " + (i + 1) + "-" + end;
+            }
+            KOGroup group = new KOGroup(groupId, title, i + 1, end, groupNames.toArray(new String[0]));
+            koGroups.add(group);
+        }
+    }
+    
+    // Build Mix-Rounds groups from P values in Merged
+    private void buildMixRoundsGroups(java.util.List<String[]> mergedData) {
+        // Find P column index from first row's header (need to re-read header)
+        int idxP = -1;
+        try {
+            java.io.File filesDir = requireContext().getFilesDir();
+            java.io.File mergedBackup = new java.io.File(filesDir, "Merged_backup.csv");
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(mergedBackup));
+            String headerLine = reader.readLine();
+            reader.close();
+            if (headerLine != null) {
+                String[] header = headerLine.split(",");
+                for (int i = 0; i < header.length; i++) {
+                    if (header[i].trim().equals("P")) { idxP = i; break; }
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("KOFragment", "Error reading Merged header: " + e.getMessage());
+            return;
+        }
+        if (idxP < 0) {
+            Toast.makeText(getContext(), "P column not found in Merged", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Group participants by P value
+        java.util.Map<Integer, java.util.List<String>> pGroups = new java.util.TreeMap<>();
+        for (String[] row : mergedData) {
+            if (idxP >= row.length) continue;
+            try {
+                int pVal = Integer.parseInt(row[idxP].trim());
+                if (pVal == 0) continue; // Skip P=0 participants
+                pGroups.computeIfAbsent(pVal, k -> new java.util.ArrayList<>()).add(row[1].trim());
+            } catch (Exception e) {}
+        }
+        
+        // Build groups based on Mix mode
+        java.util.List<java.util.List<String>> groupParticipants = new java.util.ArrayList<>();
+        java.util.List<int[]> groupPositionRanges = new java.util.ArrayList<>();
+        java.util.List<String> groupTitles = new java.util.ArrayList<>();
+        
+        java.util.List<Integer> pValues = new java.util.ArrayList<>(pGroups.keySet());
+        
+        if (koModus == 5) {
+            // Mix-Rounds 1:1 2:2 3:3 - each P value forms a group
+            int posStart = 1;
+            for (int pVal : pValues) {
+                java.util.List<String> names = pGroups.get(pVal);
+                groupParticipants.add(names);
+                groupPositionRanges.add(new int[]{posStart, posStart + names.size() - 1});
+                groupTitles.add("Mix P=" + pVal);
+                posStart += names.size();
+            }
+        } else if (koModus == 6) {
+            // Mix-Rounds 1-2:1-2 3-4:3-4 - pairs of P values form groups
+            int posStart = 1;
+            for (int i = 0; i < pValues.size(); i += 2) {
+                java.util.List<String> names = new java.util.ArrayList<>(pGroups.get(pValues.get(i)));
+                int firstP = pValues.get(i);
+                int lastP = firstP;
+                if (i + 1 < pValues.size()) {
+                    names.addAll(pGroups.get(pValues.get(i + 1)));
+                    lastP = pValues.get(i + 1);
+                }
+                groupParticipants.add(names);
+                groupPositionRanges.add(new int[]{posStart, posStart + names.size() - 1});
+                groupTitles.add(firstP == lastP ? "Mix P=" + firstP : "Mix P=" + firstP + "-" + lastP);
+                posStart += names.size();
+            }
+        } else if (koModus == 7) {
+            // Mix-Rounds 1-4:1-4 5-8:5-8 - groups of 4 P values
+            int posStart = 1;
+            for (int i = 0; i < pValues.size(); i += 4) {
+                java.util.List<String> names = new java.util.ArrayList<>();
+                int firstP = pValues.get(i);
+                int lastP = firstP;
+                for (int j = i; j < Math.min(i + 4, pValues.size()); j++) {
+                    names.addAll(pGroups.get(pValues.get(j)));
+                    lastP = pValues.get(j);
+                }
+                groupParticipants.add(names);
+                groupPositionRanges.add(new int[]{posStart, posStart + names.size() - 1});
+                groupTitles.add(firstP == lastP ? "Mix P=" + firstP : "Mix P=" + firstP + "-" + lastP);
+                posStart += names.size();
+            }
+        }
+        
+        // Create KOGroup objects, padding with Empty to next power of 2
+        for (int g = 0; g < groupParticipants.size(); g++) {
+            java.util.List<String> names = new java.util.ArrayList<>(groupParticipants.get(g));
+            int[] posRange = groupPositionRanges.get(g);
+            
+            // Pad to next power of 2
+            int n = 1;
+            while (n < names.size()) n *= 2;
+            while (names.size() < n) names.add("Empty");
+            
+            String groupId = "G" + (g + 1);
+            String title = groupTitles.get(g);
+            KOGroup group = new KOGroup(groupId, title, posRange[0], posRange[1], names.toArray(new String[0]));
+            koGroups.add(group);
+        }
+    }
+    
+    // Build a KO tree for a single group (mini-bracket)
+    private void buildGroupKOTree(KOGroup group) {
+        group.rounds.clear();
+        int koSize = group.koSize;
+        
+        if (koSize == 1) {
+            // Single participant - no matches needed
+            return;
+        }
+        
+        try {
+        // Build bracket rounds
+        int numRounds = 0;
+        int temp = koSize;
+        while (temp > 1) { numRounds++; temp /= 2; }
+        
+        // Compute seeding once outside the match loop
+        int[] seeds = getBracketSeeding(koSize);
+        android.util.Log.d("KOFragment", "buildGroupKOTree: group=" + group.groupId + " koSize=" + koSize + " numRounds=" + numRounds + " seeds.length=" + seeds.length + " participants.length=" + group.participants.length);
+        
+        // Round 1: pair participants by seeding (1 vs koSize, 2 vs koSize-1, etc.)
+        for (int r = 0; r < numRounds; r++) {
+            int matchesInRound = koSize / (1 << (r + 1));
+            List<Match> roundMatches = new ArrayList<>();
+            
+            for (int m = 0; m < matchesInRound; m++) {
+                String p1, p2;
+                if (r == 0) {
+                    int idx1 = seeds[m * 2];
+                    int idx2 = seeds[m * 2 + 1];
+                    p1 = (idx1 < group.participants.length) ? group.participants[idx1] : "Empty";
+                    p2 = (idx2 < group.participants.length) ? group.participants[idx2] : "Empty";
+                } else {
+                    p1 = "W" + (m * 2 + 1);
+                    p2 = "W" + (m * 2 + 2);
+                }
+                
+                Match match = new Match(r, m, p1, p2);
+                match.treeId = group.groupId;
+                match.displayColumn = r;
+                roundMatches.add(match);
+            }
+            group.rounds.add(roundMatches);
+        }
+        } catch (Exception e) {
+            android.util.Log.e("KOFragment", "Error in buildGroupKOTree [" + group.groupId + "]: " + e.getMessage(), e);
+        }
+    }
+    
+    // Get proper bracket seeding order for a power-of-2 size
+    private int[] getBracketSeeding(int size) {
+        if (size == 2) return new int[]{0, 1};
+        
+        int[] seeds = new int[size];
+        seeds[0] = 0;
+        seeds[1] = 1;
+        
+        for (int round = 2; round <= size / 2; round *= 2) {
+            int[] temp = new int[round * 2];
+            for (int i = 0; i < round; i++) {
+                temp[i * 2] = seeds[i];
+                temp[i * 2 + 1] = round * 2 - 1 - seeds[i];
+            }
+            seeds = temp;
+        }
+        return seeds;
+    }
+    
+    // Auto-advance Empty matches within a KOGroup
+    private void autoAdvanceEmptyMatchesInGroup(KOGroup group) {
+        if (group.rounds.isEmpty()) return;
+        
+        List<Match> firstRound = group.rounds.get(0);
+        for (int i = 0; i < firstRound.size(); i++) {
+            Match match = firstRound.get(i);
+            String p1Name = match.p1;
+            String p2Name = match.p2;
+            
+            boolean p1Empty = p1Name.equals("Empty");
+            boolean p2Empty = p2Name.equals("Empty");
+            
+            if (p1Empty && p2Empty) {
+                match.score1 = 0;
+                match.score2 = 0;
+                match.winner = "Empty";
+            } else if (p1Empty) {
+                match.score1 = 0;
+                match.score2 = 15;
+                match.winner = p2Name;
+            } else if (p2Empty) {
+                match.score1 = 15;
+                match.score2 = 0;
+                match.winner = p1Name;
+            }
+            
+            // Propagate winner to next round
+            if (match.winner != null && !match.winner.isEmpty() && group.rounds.size() > 1) {
+                List<Match> nextRound = group.rounds.get(1);
+                int nextMatchIdx = i / 2;
+                if (nextMatchIdx < nextRound.size()) {
+                    Match nextMatch = nextRound.get(nextMatchIdx);
+                    if (i % 2 == 0) {
+                        nextMatch.p1 = match.winner;
+                    } else {
+                        nextMatch.p2 = match.winner;
+                    }
+                }
+            }
+        }
+        
+        // Continue propagating for subsequent rounds with auto-resolved matches
+        for (int r = 1; r < group.rounds.size(); r++) {
+            List<Match> round = group.rounds.get(r);
+            for (int i = 0; i < round.size(); i++) {
+                Match match = round.get(i);
+                boolean p1Empty = "Empty".equals(match.p1);
+                boolean p2Empty = "Empty".equals(match.p2);
+                
+                if (p1Empty && !p2Empty && match.p2 != null && !match.p2.startsWith("W")) {
+                    match.score1 = 0;
+                    match.score2 = 15;
+                    match.winner = match.p2;
+                } else if (!p1Empty && p2Empty && match.p1 != null && !match.p1.startsWith("W")) {
+                    match.score1 = 15;
+                    match.score2 = 0;
+                    match.winner = match.p1;
+                } else if (p1Empty && p2Empty) {
+                    match.score1 = 0;
+                    match.score2 = 0;
+                    match.winner = "Empty";
+                }
+                
+                // Propagate to next round
+                if (match.winner != null && !match.winner.isEmpty() && r + 1 < group.rounds.size()) {
+                    List<Match> nextRound = group.rounds.get(r + 1);
+                    int nextMatchIdx = i / 2;
+                    if (nextMatchIdx < nextRound.size()) {
+                        Match nextMatch = nextRound.get(nextMatchIdx);
+                        if (i % 2 == 0) {
+                            nextMatch.p1 = match.winner;
+                        } else {
+                            nextMatch.p2 = match.winner;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1454,6 +1784,11 @@ public class KOFragment extends Fragment {
     private java.util.List<String> calculateKORankings() {
         java.util.List<String> rankings = new java.util.ArrayList<>();
         
+        // For Quick KO / Mix-Rounds modes, calculate per-group rankings
+        if (koModus >= 2 && !koGroups.isEmpty()) {
+            return calculateGroupKORankings();
+        }
+        
         if (koRounds.isEmpty()) {
             return rankings;
         }
@@ -1567,6 +1902,71 @@ public class KOFragment extends Fragment {
             if (!name.equals("Empty") && !rankings.contains(name)) {
                 rankings.add(name);
             }
+        }
+        
+        return rankings;
+    }
+    
+    // Calculate rankings for Quick KO / Mix-Rounds modes (multiple independent groups)
+    private java.util.List<String> calculateGroupKORankings() {
+        java.util.List<String> rankings = new java.util.ArrayList<>();
+        
+        for (KOGroup group : koGroups) {
+            java.util.List<String> groupRankings = new java.util.ArrayList<>();
+            
+            if (group.rounds.isEmpty()) {
+                // Single participant group
+                for (String name : group.participants) {
+                    if (!name.equals("Empty")) groupRankings.add(name);
+                }
+            } else {
+                // Track elimination rounds
+                java.util.Map<String, Integer> nameToRound = new java.util.HashMap<>();
+                String finalWinner = null;
+                String finalLoser = null;
+                
+                int lastRoundIdx = group.rounds.size() - 1;
+                
+                for (int r = 0; r < group.rounds.size(); r++) {
+                    for (Match m : group.rounds.get(r)) {
+                        String p1Name = m.p1;
+                        String p2Name = m.p2;
+                        if (r > 0) {
+                            p1Name = resolveGroupWinnerRef(m.p1, group, r);
+                            p2Name = resolveGroupWinnerRef(m.p2, group, r);
+                        }
+                        
+                        if (m.winner != null && !m.winner.isEmpty()) {
+                            String loser = m.winner.equals(p1Name) ? p2Name : p1Name;
+                            
+                            if (r == lastRoundIdx) {
+                                finalWinner = m.winner;
+                                finalLoser = loser;
+                            } else {
+                                if (!loser.equals("Empty") && !nameToRound.containsKey(loser)) {
+                                    nameToRound.put(loser, r);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (finalWinner != null && !finalWinner.equals("Empty")) groupRankings.add(finalWinner);
+                if (finalLoser != null && !finalLoser.equals("Empty")) groupRankings.add(finalLoser);
+                
+                // Sort eliminated participants: later round = better rank
+                java.util.List<java.util.Map.Entry<String, Integer>> sorted = 
+                    new java.util.ArrayList<>(nameToRound.entrySet());
+                sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+                
+                for (java.util.Map.Entry<String, Integer> entry : sorted) {
+                    if (!entry.getKey().equals("Empty") && !groupRankings.contains(entry.getKey())) {
+                        groupRankings.add(entry.getKey());
+                    }
+                }
+            }
+            
+            rankings.addAll(groupRankings);
         }
         
         return rankings;
@@ -1796,9 +2196,63 @@ public class KOFragment extends Fragment {
         return nameToFinalPos;
     }
 
+    // Load P (pool position) values from Merged_backup.csv for Mix-Rounds position display
+    private java.util.Map<String, Integer> loadPFromMerged() {
+        java.util.Map<String, Integer> nameToP = new java.util.HashMap<>();
+        try {
+            java.io.File filesDir = requireContext().getFilesDir();
+            java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
+            if (!backupFile.exists()) return nameToP;
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
+            String headerLine = reader.readLine();
+            if (headerLine == null) { reader.close(); return nameToP; }
+            String[] header = headerLine.split(",");
+            int idxP = -1;
+            for (int i = 0; i < header.length; i++) {
+                if (header[i].trim().equals("P")) { idxP = i; break; }
+            }
+            if (idxP < 0) { reader.close(); return nameToP; }
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts.length > idxP && parts.length >= 2) {
+                    String name = parts[1].trim();
+                    String pStr = parts[idxP].trim();
+                    if (!name.isEmpty() && !pStr.isEmpty()) {
+                        try {
+                            int pVal = Integer.parseInt(pStr);
+                            nameToP.put(name, pVal);
+                        } catch (Exception e) {}
+                    }
+                }
+            }
+            reader.close();
+        } catch (Exception e) {
+            android.util.Log.w("KOFragment", "Could not load P from Merged: " + e.getMessage());
+        }
+        return nameToP;
+    }
+
     // Render KO table: header and participant rows (editable)
     private void renderKOTable(LinearLayout koBoxLayout) {
         koBoxLayout.removeAllViews();
+        
+        // Track last rendered color index for onResume change detection
+        try {
+            Integer val = scoresViewModel.getColorCycleIndex().getValue();
+            if (val != null) lastRenderedColorIdx = val;
+        } catch (Exception e) {}
+        
+        // For Quick KO and Mix-Rounds modes, render multiple group trees
+        if (koModus >= 2 && !koGroups.isEmpty()) {
+            renderMultiGroupKOTable(koBoxLayout);
+            return;
+        }
+        // If mode >= 2 but no groups loaded yet, show nothing (wait for RELOAD)
+        if (koModus >= 2) {
+            return;
+        }
+        
         String[] origNames = getKOParticipantNames();
         // Always use the full participant array length, not filtered or sorted names, for KO tree
         int nrPart = (origNames != null) ? origNames.length : ScoresViewModel.DEFAULT_PARTICIPANTS;
@@ -1963,7 +2417,11 @@ public class KOFragment extends Fragment {
                 });
                 float ratio = (koRounds.size() <= 1) ? 0f : (float)r / (float)(koRounds.size() - 1);
                 int bgColor = interpolateColor(colorTop, colorBottom, ratio);
-                matchBtn.setBackgroundColor(bgColor);
+                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                bg.setCornerRadius(8 * density);
+                bg.setColor(bgColor);
+                bg.setStroke((int)(1 * density), 0xFF888888);
+                matchBtn.setBackground(bg);
                 TableRow.LayoutParams params = new TableRow.LayoutParams(
                     TableRow.LayoutParams.WRAP_CONTENT, boxHeightPx);
                 params.setMargins(r * 32, 0, 0, 0); // Shift right by 32px per round
@@ -2460,7 +2918,12 @@ public class KOFragment extends Fragment {
                         navigateToFinalPage();
                         return true;
                     });
-                    matchBtn.setBackgroundColor(brightenColor(treeColor, 0.25f));
+                    int losersBoxColor = brightenColor(treeColor, 0.25f);
+                    android.graphics.drawable.GradientDrawable losersBg = new android.graphics.drawable.GradientDrawable();
+                    losersBg.setCornerRadius(8 * density);
+                    losersBg.setColor(losersBoxColor);
+                    losersBg.setStroke((int)(1 * density), 0xFF888888);
+                    matchBtn.setBackground(losersBg);
                     
                     // Calculate Y position for this match using pre-computed values
                     float matchY = 0;
@@ -2526,7 +2989,11 @@ public class KOFragment extends Fragment {
             gfBtn.setPadding(8, 0, 8, 0);
             gfBtn.setIncludeFontPadding(false);
             gfBtn.setGravity(android.view.Gravity.CENTER);
-            gfBtn.setBackgroundColor(0xFFFFD700); // Gold for Grand Final
+            android.graphics.drawable.GradientDrawable gfBg = new android.graphics.drawable.GradientDrawable();
+            gfBg.setCornerRadius(8 * density);
+            gfBg.setColor(0xFFFFD700); // Gold for Grand Final
+            gfBg.setStroke((int)(1 * density), 0xFF888888);
+            gfBtn.setBackground(gfBg);
             gfBtn.setOnClickListener(v -> showMatchDialog(grandFinalMatch, participantNames));
             gfBtn.setOnLongClickListener(v -> {
                 navigateToFinalPage();
@@ -3249,6 +3716,764 @@ public class KOFragment extends Fragment {
         }
     }
     
+    // Render multiple KO group trees in a grid layout (Quick KO / Mix-Rounds)
+    private void renderMultiGroupKOTable(LinearLayout koBoxLayout) {
+      if (getContext() == null) return;
+      try {
+        float density = getResources().getDisplayMetrics().density;
+        int boxHeightPx = (int) (32 * density);
+        int groupGapPx = (int) (16 * density);
+        int titleHeightPx = (int) (24 * density);
+        
+        int colorIdx = 0;
+        try {
+            colorIdx = scoresViewModel.getColorCycleIndex().getValue() != null ? scoresViewModel.getColorCycleIndex().getValue() : 0;
+        } catch (Exception e) {}
+        int[] colorPair = RESULT_COLOR_PAIRS[colorIdx % RESULT_COLOR_PAIRS.length];
+        int colorTop = colorPair[0];
+        int colorBottom = colorPair[1];
+        
+        // Load position map: FinalPos for Quick KO, P for Mix-Rounds
+        final java.util.Map<String, Integer> nameToPosition;
+        if (koModus >= 5) {
+            nameToPosition = loadPFromMerged();
+        } else {
+            nameToPosition = loadFinalPosFromMerged();
+        }
+        
+        // Determine screen width for layout
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenWidth = dm.widthPixels;
+        
+        int colWidthPx = (int) (180 * density); // Width per bracket column
+        int smallSpacingPx = (int) (2 * density);
+        
+        // Calculate each group's required width
+        int maxRoundsInGroup = 0;
+        for (KOGroup group : koGroups) {
+            maxRoundsInGroup = Math.max(maxRoundsInGroup, group.rounds.size());
+        }
+        // Estimate group width using compact layout (60% overlap for rounds > 1)
+        int estColStep = (maxRoundsInGroup <= 1) ? colWidthPx : (int)(colWidthPx * 0.6f) + (int)(8 * density);
+        int groupWidthPx = colWidthPx + Math.max(maxRoundsInGroup - 1, 0) * estColStep + (int)(20 * density);
+        int groupsPerRow = Math.max(1, (screenWidth - (int)(20 * density)) / (groupWidthPx + groupGapPx));
+        
+        // Render groups in rows
+        LinearLayout currentRow = null;
+        for (int g = 0; g < koGroups.size(); g++) {
+            if (g % groupsPerRow == 0) {
+                currentRow = new LinearLayout(getContext());
+                currentRow.setOrientation(LinearLayout.HORIZONTAL);
+                currentRow.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+                if (g > 0) {
+                    View spacer = new View(getContext());
+                    spacer.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, groupGapPx));
+                    koBoxLayout.addView(spacer);
+                }
+                koBoxLayout.addView(currentRow);
+            }
+            
+            KOGroup group = koGroups.get(g);
+            
+            // Add horizontal gap between groups in same row
+            if (g % groupsPerRow > 0) {
+                View hSpacer = new View(getContext());
+                hSpacer.setLayoutParams(new LinearLayout.LayoutParams(groupGapPx, 1));
+                currentRow.addView(hSpacer);
+            }
+            
+            // Vertical container: title + bracket
+            LinearLayout groupContainer = new LinearLayout(getContext());
+            groupContainer.setOrientation(LinearLayout.VERTICAL);
+            groupContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            
+            // Group title
+            TextView titleView = new TextView(getContext());
+            titleView.setText(group.title != null ? group.title : group.groupId);
+            titleView.setTextColor(0xFF333333);
+            titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+            titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+            titleView.setPadding(8, 4, 8, 4);
+            groupContainer.addView(titleView);
+            
+            // Bracket FrameLayout
+            android.widget.FrameLayout groupFrame = new android.widget.FrameLayout(getContext());
+            groupFrame.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            
+            renderGroupBracket(groupFrame, group, colorTop, colorBottom, boxHeightPx, smallSpacingPx, colWidthPx, density, nameToPosition);
+            
+            groupContainer.addView(groupFrame);
+            currentRow.addView(groupContainer);
+        }
+      } catch (Exception e) {
+        android.util.Log.e("KOFragment", "Error in renderMultiGroupKOTable: " + e.getMessage(), e);
+        Toast.makeText(getContext(), "Render Error: " + e.getClass().getSimpleName() + ": " + e.getMessage(), Toast.LENGTH_LONG).show();
+      }
+    }
+    
+    // Render a single group bracket within a FrameLayout
+    private void renderGroupBracket(android.widget.FrameLayout frame, KOGroup group,
+                                      int colorTop, int colorBottom,
+                                      int boxHeightPx, int smallSpacingPx, int colWidthPx, float density,
+                                      java.util.Map<String, Integer> nameToPosition) {
+        if (group.rounds.isEmpty()) return;
+        if (getContext() == null) return;
+        
+        try {
+        // First pass: build all labels and measure widest text to determine actual column width
+        java.util.List<java.util.List<String>> allLabels = new java.util.ArrayList<>();
+        java.util.List<java.util.List<String[]>> allResolvedNames = new java.util.ArrayList<>();
+        int defaultBoxWidth = colWidthPx;
+        
+        // Use TextPaint for measurement (avoids NPE from detached Button.setText)
+        // Create a temporary Button just to read its default text size, then discard it
+        Button tempBtn = new Button(getContext());
+        android.text.TextPaint measurePaint = new android.text.TextPaint();
+        measurePaint.setTextSize(tempBtn.getTextSize()); // Match actual default button text size
+        measurePaint.setTypeface(tempBtn.getTypeface());
+        // Account for button internal padding + our explicit padding (8+8)
+        int btnChromePadding = tempBtn.getPaddingLeft() + tempBtn.getPaddingRight() + 16;
+        tempBtn = null;
+        
+        float widestText = 0;
+        for (int r = 0; r < group.rounds.size(); r++) {
+            List<Match> round = group.rounds.get(r);
+            java.util.List<String> roundLabels = new java.util.ArrayList<>();
+            java.util.List<String[]> roundNames = new java.util.ArrayList<>();
+            for (int m = 0; m < round.size(); m++) {
+                Match match = round.get(m);
+                String p1Name = match.p1;
+                String p2Name = match.p2;
+                if (r > 0) {
+                    p1Name = resolveGroupWinnerRef(match.p1, group, r);
+                    p2Name = resolveGroupWinnerRef(match.p2, group, r);
+                }
+                if (p1Name == null) p1Name = "Empty";
+                if (p2Name == null) p2Name = "Empty";
+                int p1Pos = nameToPosition.getOrDefault(p1Name, 0);
+                int p2Pos = nameToPosition.getOrDefault(p2Name, 0);
+                String label;
+                if (match.score1 >= 0 && match.score2 >= 0) {
+                    boolean p1Winner = match.score1 > match.score2;
+                    boolean p2Winner = match.score2 > match.score1;
+                    String p1Color = p1Winner ? "#1976D2" : "#D32F2F";
+                    String p2Color = p2Winner ? "#1976D2" : "#D32F2F";
+                    String p1PosSpan = (p1Pos > 0) ? "<b><font color='" + p1Color + "'>" + p1Pos + "</font></b> " : "";
+                    String p2PosSpan = (p2Pos > 0) ? "<b><font color='" + p2Color + "'>" + p2Pos + "</font></b> " : "";
+                    String p1NameSpan = "<font color='" + p1Color + "'>" + p1Name.toUpperCase() + "</font>";
+                    String p2NameSpan = "<font color='" + p2Color + "'>" + p2Name.toUpperCase() + "</font>";
+                    String resultSpan = "<b><font color='#222222'> " + match.score1 + ":" + match.score2 + "</font></b>";
+                    label = p1PosSpan + p1NameSpan + " Vs " + p2PosSpan + p2NameSpan + resultSpan;
+                } else {
+                    String p1Label = (p1Pos > 0) ? "<b>" + p1Pos + "</b> " + p1Name.toUpperCase() : p1Name.toUpperCase();
+                    String p2Label = (p2Pos > 0) ? "<b>" + p2Pos + "</b> " + p2Name.toUpperCase() : p2Name.toUpperCase();
+                    label = p1Label + " Vs " + p2Label + " <b>x:x</b>";
+                }
+                roundLabels.add(label);
+                roundNames.add(new String[]{p1Name, p2Name});
+                
+                // Measure text width using TextPaint (strip HTML tags for measurement)
+                String plainText = android.text.Html.fromHtml(label).toString();
+                float w = measurePaint.measureText(plainText) + btnChromePadding;
+                if (w > widestText) widestText = w;
+            }
+            allLabels.add(roundLabels);
+            allResolvedNames.add(roundNames);
+        }
+        
+        // Use measured width as actual column width (min = colWidthPx)
+        int actualColWidth = Math.max((int) widestText, defaultBoxWidth);
+        
+        // First, compute y-positions for all rounds
+        java.util.List<java.util.List<Float>> matchYPixels = new java.util.ArrayList<>();
+        for (int r = 0; r < group.rounds.size(); r++) {
+            List<Match> round = group.rounds.get(r);
+            java.util.List<Float> roundYPixels = new java.util.ArrayList<>();
+            for (int m = 0; m < round.size(); m++) {
+                float yPx;
+                if (r == 0) {
+                    yPx = m * (boxHeightPx + smallSpacingPx);
+                } else {
+                    java.util.List<Float> prevYPixels = matchYPixels.get(r - 1);
+                    int src1 = m * 2;
+                    int src2 = m * 2 + 1;
+                    float prev1 = (src1 < prevYPixels.size()) ? prevYPixels.get(src1) : 0f;
+                    float prev2 = (src2 < prevYPixels.size()) ? prevYPixels.get(src2) : prev1;
+                    yPx = (prev1 + prev2) / 2f;
+                }
+                roundYPixels.add(yPx);
+            }
+            matchYPixels.add(roundYPixels);
+        }
+        
+        // Compute compact x-offsets per round (same algorithm as regular KO)
+        int totalRounds = group.rounds.size();
+        int columnSpacingPx = (int)(8 * density);
+        int[] roundXOffset = new int[totalRounds];
+        roundXOffset[0] = 0;
+        for (int r = 1; r < totalRounds; r++) {
+            java.util.List<Float> prevY = matchYPixels.get(r - 1);
+            java.util.List<Float> currY = matchYPixels.get(r);
+            float minGap = Float.MAX_VALUE;
+            for (float cy : currY) {
+                for (float py : prevY) {
+                    float gap;
+                    if (cy >= py + boxHeightPx) {
+                        gap = cy - (py + boxHeightPx);
+                    } else if (py >= cy + boxHeightPx) {
+                        gap = py - (cy + boxHeightPx);
+                    } else {
+                        gap = -1;
+                    }
+                    if (gap < minGap) minGap = gap;
+                }
+            }
+            int step;
+            if (minGap < 0) {
+                step = actualColWidth + columnSpacingPx;
+            } else if (minGap < boxHeightPx) {
+                step = (int)(actualColWidth * 0.6f) + columnSpacingPx;
+            } else {
+                step = (int)(actualColWidth * 0.35f) + columnSpacingPx;
+            }
+            if (step < columnSpacingPx) step = columnSpacingPx;
+            roundXOffset[r] = roundXOffset[r - 1] + step;
+        }
+        
+        // Now render buttons using computed positions
+        for (int r = 0; r < group.rounds.size(); r++) {
+            List<Match> round = group.rounds.get(r);
+            java.util.List<String> roundLabels = allLabels.get(r);
+            java.util.List<String[]> roundNames = allResolvedNames.get(r);
+            java.util.List<Float> roundYPixels = matchYPixels.get(r);
+            
+            for (int m = 0; m < round.size(); m++) {
+                float yPx = roundYPixels.get(m);
+                
+                Match match = round.get(m);
+                Button matchBtn = new Button(getContext());
+                String label = roundLabels.get(m);
+                String p1Name = roundNames.get(m)[0];
+                String p2Name = roundNames.get(m)[1];
+                if (p1Name == null) p1Name = "Empty";
+                if (p2Name == null) p2Name = "Empty";
+                
+                matchBtn.setAllCaps(false);
+                matchBtn.setTextColor(Color.BLACK);
+                matchBtn.setText(android.text.Html.fromHtml(label));
+                matchBtn.setSingleLine(true);
+                matchBtn.setPadding(8, 0, 8, 0);
+                matchBtn.setIncludeFontPadding(false);
+                
+                // Color gradient from top to bottom
+                float ratio = (group.rounds.size() <= 1) ? 0.5f : (float) r / (group.rounds.size() - 1);
+                int boxColor = interpolateColor(colorTop, colorBottom, ratio);
+                int brighterColor = brightenColor(boxColor, 0.25f);
+                
+                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                bg.setCornerRadius(8 * density);
+                bg.setColor(brighterColor);
+                bg.setStroke((int)(1 * density), 0xFF888888);
+                matchBtn.setBackground(bg);
+                
+                int xPx = roundXOffset[r];
+                android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                    actualColWidth - (int)(4 * density), boxHeightPx);
+                params.leftMargin = xPx;
+                params.topMargin = (int) yPx;
+                matchBtn.setLayoutParams(params);
+                
+                final int roundIdx = r;
+                final int matchIdx = m;
+                final String finalP1 = p1Name;
+                final String finalP2 = p2Name;
+                final KOGroup finalGroup = group;
+                
+                matchBtn.setOnClickListener(v -> {
+                    showGroupScoreDialog(finalGroup, roundIdx, matchIdx, finalP1, finalP2);
+                });
+                
+                frame.addView(matchBtn);
+            }
+        }
+        
+        // Set frame minimum size based on content
+        float maxY = 0;
+        if (!matchYPixels.isEmpty()) {
+            java.util.List<Float> firstRoundY = matchYPixels.get(0);
+            if (!firstRoundY.isEmpty()) {
+                maxY = firstRoundY.get(firstRoundY.size() - 1) + boxHeightPx;
+            }
+        }
+        int totalWidth = (totalRounds > 0) ? roundXOffset[totalRounds - 1] + actualColWidth : actualColWidth;
+        frame.setMinimumWidth(totalWidth);
+        frame.setMinimumHeight((int) maxY);
+        } catch (Exception e) {
+            StringBuilder where = new StringBuilder();
+            for (int si = 0; si < Math.min(3, e.getStackTrace().length); si++) {
+                StackTraceElement ste = e.getStackTrace()[si];
+                if (si > 0) where.append(" <- ");
+                where.append(ste.getMethodName()).append(":").append(ste.getLineNumber());
+            }
+            android.util.Log.e("KOFragment", "Error in renderGroupBracket [" + group.groupId + "]: " + e.getMessage(), e);
+            try {
+                Toast.makeText(getContext(), "[" + group.groupId + "] NPE " + where, Toast.LENGTH_LONG).show();
+            } catch (Exception ignore) {}
+        }
+    }
+    
+    // Resolve "W1", "W2" etc. winner references within a KOGroup
+    private String resolveGroupWinnerRef(String ref, KOGroup group, int currentRound) {
+        if (ref == null) return "Empty";
+        if (!ref.startsWith("W")) return ref;
+        
+        try {
+            int matchIdx = Integer.parseInt(ref.substring(1)) - 1;
+            int prevRound = currentRound - 1;
+            if (prevRound >= 0 && prevRound < group.rounds.size()) {
+                List<Match> prevRoundMatches = group.rounds.get(prevRound);
+                if (matchIdx >= 0 && matchIdx < prevRoundMatches.size()) {
+                    Match prevMatch = prevRoundMatches.get(matchIdx);
+                    if (prevMatch.winner != null && !prevMatch.winner.isEmpty()) {
+                        return prevMatch.winner;
+                    }
+                }
+            }
+        } catch (Exception e) {}
+        return ref;
+    }
+    
+    // Show score entry dialog for a match in a KOGroup - uses same two-popup approach as regular KO
+    private void showGroupScoreDialog(KOGroup group, int roundIdx, int matchIdx, String p1Name, String p2Name) {
+        if (p1Name.equals("Empty") && p2Name.equals("Empty")) return;
+        if (p1Name.equals("Empty") || p2Name.equals("Empty")) return; // Already auto-advanced
+        
+        Match match = group.rounds.get(roundIdx).get(matchIdx);
+        
+        // First popup: score for p1 (same layout as showMatchDialog)
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
+        builder.setTitle(p1Name.toUpperCase() + "      Vs " + p2Name.toUpperCase());
+        
+        android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
+        grid.setColumnCount(6);
+        grid.setRowCount(5);
+        int btnHeight = (int) (48 * getResources().getDisplayMetrics().density);
+        float baseTextSize = 16f;
+        float increasedTextSize = baseTextSize * 1.3f;
+        final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        
+        // Row 0: 0,1,2,3,4,5
+        for (int col = 0; col < 6; col++) {
+            final int score = col;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                showGroupSecondScoreDialog(group, roundIdx, matchIdx, p1Name, p2Name, score);
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(0);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 1: space, 6,7,8,9,10
+        android.widget.Space space1 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams space1Params = new android.widget.GridLayout.LayoutParams();
+        space1Params.width = 0;
+        space1Params.height = btnHeight;
+        space1Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        space1Params.rowSpec = android.widget.GridLayout.spec(1);
+        space1.setLayoutParams(space1Params);
+        grid.addView(space1);
+        for (int col = 1; col < 6; col++) {
+            final int score = col + 5;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                showGroupSecondScoreDialog(group, roundIdx, matchIdx, p1Name, p2Name, score);
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(1);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 2: space, 11,12,13,14,15
+        android.widget.Space space2 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams space2Params = new android.widget.GridLayout.LayoutParams();
+        space2Params.width = 0;
+        space2Params.height = btnHeight;
+        space2Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        space2Params.rowSpec = android.widget.GridLayout.spec(2);
+        space2.setLayoutParams(space2Params);
+        grid.addView(space2);
+        for (int col = 1; col < 6; col++) {
+            final int score = col + 10;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+                showGroupSecondScoreDialog(group, roundIdx, matchIdx, p1Name, p2Name, score);
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(2);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 3: spacer
+        android.widget.Space emptyRow = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams emptyParams = new android.widget.GridLayout.LayoutParams();
+        emptyParams.width = 0;
+        emptyParams.height = (int) (16 * getResources().getDisplayMetrics().density);
+        emptyParams.columnSpec = android.widget.GridLayout.spec(0, 6, 1f);
+        emptyParams.rowSpec = android.widget.GridLayout.spec(3);
+        emptyRow.setLayoutParams(emptyParams);
+        grid.addView(emptyRow);
+        
+        // Row 4: space, Cancel, spaces, RESET
+        android.widget.Space btnSpace1 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams btnSpace1Params = new android.widget.GridLayout.LayoutParams();
+        btnSpace1Params.width = 0;
+        btnSpace1Params.height = btnHeight;
+        btnSpace1Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        btnSpace1Params.rowSpec = android.widget.GridLayout.spec(4);
+        btnSpace1.setLayoutParams(btnSpace1Params);
+        grid.addView(btnSpace1);
+        
+        android.widget.Button cancelBtn = new android.widget.Button(getContext());
+        cancelBtn.setText("Cancel");
+        cancelBtn.setMinHeight(btnHeight);
+        cancelBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        cancelBtn.setPadding(4, 4, 4, 4);
+        cancelBtn.setOnClickListener(v -> { if (dialogRef[0] != null) dialogRef[0].cancel(); });
+        android.widget.GridLayout.LayoutParams cancelParams = new android.widget.GridLayout.LayoutParams();
+        cancelParams.width = 0;
+        cancelParams.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+        cancelParams.columnSpec = android.widget.GridLayout.spec(1, 1f);
+        cancelParams.rowSpec = android.widget.GridLayout.spec(4);
+        cancelParams.setMargins(4, 4, 4, 4);
+        cancelBtn.setLayoutParams(cancelParams);
+        grid.addView(cancelBtn);
+        
+        for (int col = 2; col < 5; col++) {
+            android.widget.Space sp = new android.widget.Space(getContext());
+            android.widget.GridLayout.LayoutParams spParams = new android.widget.GridLayout.LayoutParams();
+            spParams.width = 0;
+            spParams.height = btnHeight;
+            spParams.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            spParams.rowSpec = android.widget.GridLayout.spec(4);
+            sp.setLayoutParams(spParams);
+            grid.addView(sp);
+        }
+        
+        android.widget.Button resetBtn = new android.widget.Button(getContext());
+        resetBtn.setText("RESET");
+        resetBtn.setMinHeight(btnHeight);
+        resetBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        resetBtn.setBackgroundColor(android.graphics.Color.RED);
+        resetBtn.setPadding(4, 4, 4, 4);
+        resetBtn.setOnClickListener(v -> {
+            match.score1 = -1;
+            match.score2 = -1;
+            match.winner = null;
+            propagateGroupWinners(group);
+            backupKOTree();
+            renderKOTable(koBoxLayoutRef);
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+        });
+        android.widget.GridLayout.LayoutParams resetParams = new android.widget.GridLayout.LayoutParams();
+        resetParams.width = 0;
+        resetParams.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+        resetParams.columnSpec = android.widget.GridLayout.spec(5, 1f);
+        resetParams.rowSpec = android.widget.GridLayout.spec(4);
+        resetParams.setMargins(4, 4, 4, 4);
+        resetBtn.setLayoutParams(resetParams);
+        grid.addView(resetBtn);
+        
+        android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
+        verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        verticalLayout.addView(grid);
+        
+        builder.setView(verticalLayout);
+        android.app.AlertDialog dialog = builder.create();
+        dialogRef[0] = dialog;
+        dialog.setOnShowListener(d -> {
+            android.view.Window window = dialog.getWindow();
+            if (window != null) {
+                android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams();
+                lp.copyFrom(window.getAttributes());
+                lp.width = (int) (getResources().getDisplayMetrics().widthPixels * 0.75);
+                window.setAttributes(lp);
+            }
+        });
+        dialog.show();
+    }
+    
+    // Show second score popup for group KO match (same two-popup approach as regular KO)
+    private void showGroupSecondScoreDialog(KOGroup group, int roundIdx, int matchIdx, String p1Name, String p2Name, int score1) {
+        Match match = group.rounds.get(roundIdx).get(matchIdx);
+        
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
+        builder.setTitle(p2Name.toUpperCase() + "      Vs " + p1Name.toUpperCase());
+        
+        android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
+        grid.setColumnCount(6);
+        grid.setRowCount(5);
+        int btnHeight = (int) (48 * getResources().getDisplayMetrics().density);
+        float baseTextSize = 16f;
+        float increasedTextSize = baseTextSize * 1.3f;
+        final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        
+        // Row 0: 0,1,2,3,4,5
+        for (int col = 0; col < 6; col++) {
+            final int score2 = col;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score2));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                match.score1 = score1;
+                match.score2 = score2;
+                match.winner = (score1 > score2) ? p1Name : p2Name;
+                propagateGroupWinners(group);
+                backupKOTree();
+                renderKOTable(koBoxLayoutRef);
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(0);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 1: space, 6,7,8,9,10
+        android.widget.Space space1 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams space1Params = new android.widget.GridLayout.LayoutParams();
+        space1Params.width = 0;
+        space1Params.height = btnHeight;
+        space1Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        space1Params.rowSpec = android.widget.GridLayout.spec(1);
+        space1.setLayoutParams(space1Params);
+        grid.addView(space1);
+        for (int col = 1; col < 6; col++) {
+            final int score2 = col + 5;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score2));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                match.score1 = score1;
+                match.score2 = score2;
+                match.winner = (score1 > score2) ? p1Name : p2Name;
+                propagateGroupWinners(group);
+                backupKOTree();
+                renderKOTable(koBoxLayoutRef);
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(1);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 2: space, 11,12,13,14,15
+        android.widget.Space space2 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams space2Params = new android.widget.GridLayout.LayoutParams();
+        space2Params.width = 0;
+        space2Params.height = btnHeight;
+        space2Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        space2Params.rowSpec = android.widget.GridLayout.spec(2);
+        space2.setLayoutParams(space2Params);
+        grid.addView(space2);
+        for (int col = 1; col < 6; col++) {
+            final int score2 = col + 10;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(score2));
+            btn.setMinHeight(btnHeight);
+            btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            btn.setPadding(4, 4, 4, 4);
+            btn.setOnClickListener(v -> {
+                match.score1 = score1;
+                match.score2 = score2;
+                match.winner = (score1 > score2) ? p1Name : p2Name;
+                propagateGroupWinners(group);
+                backupKOTree();
+                renderKOTable(koBoxLayoutRef);
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+            });
+            android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            params.rowSpec = android.widget.GridLayout.spec(2);
+            params.setMargins(4, 4, 4, 4);
+            btn.setLayoutParams(params);
+            grid.addView(btn);
+        }
+        
+        // Row 3: spacer
+        android.widget.Space emptyRow = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams emptyParams = new android.widget.GridLayout.LayoutParams();
+        emptyParams.width = 0;
+        emptyParams.height = (int) (16 * getResources().getDisplayMetrics().density);
+        emptyParams.columnSpec = android.widget.GridLayout.spec(0, 6, 1f);
+        emptyParams.rowSpec = android.widget.GridLayout.spec(3);
+        emptyRow.setLayoutParams(emptyParams);
+        grid.addView(emptyRow);
+        
+        // Row 4: space, Cancel, spaces, RESET
+        android.widget.Space btnSpace1 = new android.widget.Space(getContext());
+        android.widget.GridLayout.LayoutParams btnSpace1Params = new android.widget.GridLayout.LayoutParams();
+        btnSpace1Params.width = 0;
+        btnSpace1Params.height = btnHeight;
+        btnSpace1Params.columnSpec = android.widget.GridLayout.spec(0, 1f);
+        btnSpace1Params.rowSpec = android.widget.GridLayout.spec(4);
+        btnSpace1.setLayoutParams(btnSpace1Params);
+        grid.addView(btnSpace1);
+        
+        android.widget.Button cancelBtn = new android.widget.Button(getContext());
+        cancelBtn.setText("Cancel");
+        cancelBtn.setMinHeight(btnHeight);
+        cancelBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        cancelBtn.setPadding(4, 4, 4, 4);
+        cancelBtn.setOnClickListener(v -> { if (dialogRef[0] != null) dialogRef[0].cancel(); });
+        android.widget.GridLayout.LayoutParams cancelParams = new android.widget.GridLayout.LayoutParams();
+        cancelParams.width = 0;
+        cancelParams.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+        cancelParams.columnSpec = android.widget.GridLayout.spec(1, 1f);
+        cancelParams.rowSpec = android.widget.GridLayout.spec(4);
+        cancelParams.setMargins(4, 4, 4, 4);
+        cancelBtn.setLayoutParams(cancelParams);
+        grid.addView(cancelBtn);
+        
+        for (int col = 2; col < 5; col++) {
+            android.widget.Space sp = new android.widget.Space(getContext());
+            android.widget.GridLayout.LayoutParams spParams = new android.widget.GridLayout.LayoutParams();
+            spParams.width = 0;
+            spParams.height = btnHeight;
+            spParams.columnSpec = android.widget.GridLayout.spec(col, 1f);
+            spParams.rowSpec = android.widget.GridLayout.spec(4);
+            sp.setLayoutParams(spParams);
+            grid.addView(sp);
+        }
+        
+        android.widget.Button resetBtn = new android.widget.Button(getContext());
+        resetBtn.setText("RESET");
+        resetBtn.setMinHeight(btnHeight);
+        resetBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+        resetBtn.setBackgroundColor(android.graphics.Color.RED);
+        resetBtn.setPadding(4, 4, 4, 4);
+        resetBtn.setOnClickListener(v -> {
+            match.score1 = -1;
+            match.score2 = -1;
+            match.winner = null;
+            propagateGroupWinners(group);
+            backupKOTree();
+            renderKOTable(koBoxLayoutRef);
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+        });
+        android.widget.GridLayout.LayoutParams resetParams = new android.widget.GridLayout.LayoutParams();
+        resetParams.width = 0;
+        resetParams.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+        resetParams.columnSpec = android.widget.GridLayout.spec(5, 1f);
+        resetParams.rowSpec = android.widget.GridLayout.spec(4);
+        resetParams.setMargins(4, 4, 4, 4);
+        resetBtn.setLayoutParams(resetParams);
+        grid.addView(resetBtn);
+        
+        android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
+        verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        verticalLayout.addView(grid);
+        
+        builder.setView(verticalLayout);
+        android.app.AlertDialog dialog = builder.create();
+        dialogRef[0] = dialog;
+        dialog.setOnShowListener(d -> {
+            android.view.Window window = dialog.getWindow();
+            if (window != null) {
+                android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams();
+                lp.copyFrom(window.getAttributes());
+                lp.width = (int) (getResources().getDisplayMetrics().widthPixels * 0.75);
+                window.setAttributes(lp);
+            }
+        });
+        dialog.show();
+    }
+    
+    // Propagate winners through a KOGroup's rounds
+    private void propagateGroupWinners(KOGroup group) {
+        for (int r = 0; r < group.rounds.size() - 1; r++) {
+            List<Match> currentRound = group.rounds.get(r);
+            List<Match> nextRound = group.rounds.get(r + 1);
+            
+            for (int m = 0; m < currentRound.size(); m++) {
+                Match match = currentRound.get(m);
+                int nextMatchIdx = m / 2;
+                if (nextMatchIdx < nextRound.size()) {
+                    Match nextMatch = nextRound.get(nextMatchIdx);
+                    if (match.winner != null && !match.winner.isEmpty()) {
+                        if (m % 2 == 0) {
+                            nextMatch.p1 = match.winner;
+                        } else {
+                            nextMatch.p2 = match.winner;
+                        }
+                    } else {
+                        // Clear next round ref if winner is cleared
+                        if (m % 2 == 0) {
+                            nextMatch.p1 = "W" + (m + 1);
+                        } else {
+                            nextMatch.p2 = "W" + (m + 1);
+                        }
+                        // Also clear next match result if it depends on this
+                        if (nextMatch.score1 >= 0 || nextMatch.score2 >= 0) {
+                            nextMatch.score1 = -1;
+                            nextMatch.score2 = -1;
+                            nextMatch.winner = null;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Propagate KO winners to next round after score entry
     private void propagateKOWinners() {
         String[] participantNames = getKOParticipantNames();
@@ -3643,9 +4868,10 @@ public class KOFragment extends Fragment {
                 return;
             }
             
-            // Parse metadata line: #META,koSize,repechage
+            // Parse metadata line: #META,koSize,repechage[,modus]
             int koSize = 8;
             boolean repechage = false;
+            int restoredModus = 0;
             boolean hasMetaLine = false;
             if (firstLine.startsWith("#META,")) {
                 hasMetaLine = true;
@@ -3653,6 +4879,9 @@ public class KOFragment extends Fragment {
                 if (metaParts.length >= 3) {
                     try { koSize = Integer.parseInt(metaParts[1].trim()); } catch (Exception e) {}
                     repechage = "true".equalsIgnoreCase(metaParts[2].trim());
+                }
+                if (metaParts.length >= 4) {
+                    try { restoredModus = Integer.parseInt(metaParts[3].trim()); } catch (Exception e) {}
                 }
                 // Skip header line
                 reader.readLine();
@@ -3679,8 +4908,9 @@ public class KOFragment extends Fragment {
                 if (koSize < 4) koSize = 8;
             }
             
-            android.util.Log.d("KOFragment", "RESTORE: koSize=" + koSize + ", repechage=" + repechage);
+            android.util.Log.d("KOFragment", "RESTORE: koSize=" + koSize + ", repechage=" + repechage + ", modus=" + restoredModus);
             koRepechage = repechage;
+            koModus = restoredModus;
             koNrPart = koSize; // Set local nrPart from backup
             
             // Load participant names from Merged_backup.csv
@@ -3739,93 +4969,12 @@ public class KOFragment extends Fragment {
                 }
             }
             
-            // Update checkbox state to match restored repechage
-            if (repechageCheckboxRef != null) {
-                repechageCheckboxRef.setOnCheckedChangeListener(null); // Avoid triggering reload
-                repechageCheckboxRef.setChecked(koRepechage);
-                repechageCheckboxRef.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    koRepechage = isChecked;
-                    int nrPartVal = getKONrPart();
-                    
-                    // Save ALL match results before reloading using round/match indices
-                    java.util.Map<String, int[]> savedResults = new java.util.HashMap<>();
-                    for (int r = 0; r < koRounds.size(); r++) {
-                        List<Match> round = koRounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            if (m.score1 >= 0 && m.score2 >= 0) {
-                                String key = "R1|R" + r + "|M" + mi;
-                                savedResults.put(key, new int[]{m.score1, m.score2});
-                            }
-                        }
-                    }
-                    for (RepechageTree tree : allRepechageTrees) {
-                        if (tree.treeId.equals("R1")) continue;
-                        for (int r = 0; r < tree.rounds.size(); r++) {
-                            List<Match> round = tree.rounds.get(r);
-                            for (int mi = 0; mi < round.size(); mi++) {
-                                Match m = round.get(mi);
-                                if (m.score1 >= 0 && m.score2 >= 0) {
-                                    String key = tree.treeId + "|R" + r + "|M" + mi;
-                                    savedResults.put(key, new int[]{m.score1, m.score2});
-                                }
-                            }
-                        }
-                    }
-                    
-                    loadKOTree(nrPartVal, koRepechage);
-                    
-                    // Restore saved match results to main bracket
-                    for (int r = 0; r < koRounds.size(); r++) {
-                        List<Match> round = koRounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            String key = "R1|R" + r + "|M" + mi;
-                            if (savedResults.containsKey(key)) {
-                                int[] scores = savedResults.get(key);
-                                m.score1 = scores[0];
-                                m.score2 = scores[1];
-                                if (m.score1 > m.score2) {
-                                    m.winner = getKOName(m.p1, getKOParticipantNames());
-                                } else if (m.score2 > m.score1) {
-                                    m.winner = getKOName(m.p2, getKOParticipantNames());
-                                }
-                            }
-                        }
-                    }
-                    // Restore saved match results to all repechage trees
-                    for (RepechageTree tree : allRepechageTrees) {
-                        if (tree.treeId.equals("R1")) continue;
-                        for (int r = 0; r < tree.rounds.size(); r++) {
-                            List<Match> round = tree.rounds.get(r);
-                            for (int mi = 0; mi < round.size(); mi++) {
-                                Match m = round.get(mi);
-                                String key = tree.treeId + "|R" + r + "|M" + mi;
-                                if (savedResults.containsKey(key)) {
-                                    int[] scores = savedResults.get(key);
-                                    m.score1 = scores[0];
-                                    m.score2 = scores[1];
-                                    if (m.score1 > m.score2) {
-                                        m.winner = getKOName(m.p1, getKOParticipantNames());
-                                    } else if (m.score2 > m.score1) {
-                                        m.winner = getKOName(m.p2, getKOParticipantNames());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    String[] participantNames = getKOParticipantNames();
-                    if (participantNames != null) {
-                        autoAdvanceEmptyMatches(participantNames);
-                        if (koRepechage && !losersRounds.isEmpty()) {
-                            propagateLosersToLosersBracket(participantNames);
-                            autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-                        }
-                    }
-                    propagateKOWinners();
-                    renderKOTable(koBoxLayout);
-                });
+            // Update spinner state to match restored modus
+            if (modusSpinnerRef != null) {
+                modusSpinnerRef.setOnItemSelectedListener(null);
+                modusSpinnerRef.setSelection(koModus);
+                setupModusSpinner(modusSpinnerRef, koBoxLayout);
+                modusSpinnerRef.setSelection(koModus);
             }
             
             // Auto-advance Empty matches and propagate
@@ -3852,12 +5001,29 @@ public class KOFragment extends Fragment {
             File filesDir = requireContext().getFilesDir();
             File backupFile = new File(filesDir, "KO_backup.csv");
             FileWriter writer = new FileWriter(backupFile, false);
-            // Write metadata line with koSize and repechage state
+            // Write metadata line with koSize, repechage state, and koModus
             int koSize = koRounds.isEmpty() ? 8 : koRounds.get(0).size() * 2;
-            writer.write("#META," + koSize + "," + koRepechage + "\n");
+            writer.write("#META," + koSize + "," + koRepechage + "," + koModus + "\n");
             writer.write("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
-            android.util.Log.d("KOFragment", "BACKUP: koRounds.size()=" + koRounds.size() + ", koSize=" + koSize + ", repechage=" + koRepechage);
+            android.util.Log.d("KOFragment", "BACKUP: koRounds.size()=" + koRounds.size() + ", koSize=" + koSize + ", repechage=" + koRepechage + ", modus=" + koModus);
             
+            if (koModus >= 2 && !koGroups.isEmpty()) {
+                // Write group data for Quick KO / Mix-Rounds modes
+                for (KOGroup group : koGroups) {
+                    for (int r = 0; r < group.rounds.size(); r++) {
+                        for (Match m : group.rounds.get(r)) {
+                            String p1 = m.p1;
+                            String p2 = m.p2;
+                            String winner = "";
+                            if (m.score1 >= 0 && m.score2 >= 0) {
+                                winner = (m.score1 > m.score2) ? p1 : (m.score2 > m.score1 ? p2 : "");
+                            }
+                            String line = group.groupId+","+(r+1)+","+(m.matchIdx+1)+","+p1+","+(m.score1>=0?m.score1:"")+","+p2+","+(m.score2>=0?m.score2:"")+","+winner;
+                            writer.write(line + "\n");
+                        }
+                    }
+                }
+            } else {
             // Write main bracket (R1)
             for (int r = 0; r < koRounds.size(); r++) {
                 android.util.Log.d("KOFragment", "BACKUP: Round " + r + " has " + koRounds.get(r).size() + " matches");
@@ -3874,7 +5040,7 @@ public class KOFragment extends Fragment {
             // Write repechage trees if enabled
             if (koRepechage && !allRepechageTrees.isEmpty()) {
                 for (RepechageTree tree : allRepechageTrees) {
-                    if (tree.treeId.equals("R1")) continue; // Skip main tree (already written)
+                    if (tree.treeId.equals("R1")) continue;
                     
                     for (int r = 0; r < tree.rounds.size(); r++) {
                         for (Match m : tree.rounds.get(r)) {
@@ -3890,6 +5056,7 @@ public class KOFragment extends Fragment {
                     }
                 }
             }
+            } // end else (standard KO modes)
             
             writer.close();
         } catch (Exception e) { 
@@ -3980,11 +5147,27 @@ public class KOFragment extends Fragment {
     // Generate KO data CSV string for QR code (same format as backup)
     private String generateKOCsvData() {
         StringBuilder csv = new StringBuilder();
-        // Write metadata line with koSize and repechage state
+        // Write metadata line with koSize, repechage state, and koModus
         int koSize = koRounds.isEmpty() ? 8 : koRounds.get(0).size() * 2;
-        csv.append("#META," + koSize + "," + koRepechage + "\n");
+        csv.append("#META," + koSize + "," + koRepechage + "," + koModus + "\n");
         csv.append("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
         
+        if (koModus >= 2 && !koGroups.isEmpty()) {
+            // Write group data for Quick KO / Mix-Rounds modes
+            for (KOGroup group : koGroups) {
+                for (int r = 0; r < group.rounds.size(); r++) {
+                    for (Match m : group.rounds.get(r)) {
+                        String p1 = m.p1;
+                        String p2 = m.p2;
+                        String winner = "";
+                        if (m.score1 >= 0 && m.score2 >= 0) {
+                            winner = (m.score1 > m.score2) ? p1 : (m.score2 > m.score1 ? p2 : "");
+                        }
+                        csv.append(group.groupId+","+(r+1)+","+(m.matchIdx+1)+","+p1+","+(m.score1>=0?m.score1:"")+","+p2+","+(m.score2>=0?m.score2:"")+","+winner+"\n");
+                    }
+                }
+            }
+        } else {
         // Write main bracket (R1)
         for (int r = 0; r < koRounds.size(); r++) {
             for (Match m : koRounds.get(r)) {
@@ -3998,7 +5181,7 @@ public class KOFragment extends Fragment {
         // Write repechage trees if enabled
         if (koRepechage && !allRepechageTrees.isEmpty()) {
             for (RepechageTree tree : allRepechageTrees) {
-                if (tree.treeId.equals("R1")) continue; // Skip main tree (already written)
+                if (tree.treeId.equals("R1")) continue;
                 
                 for (int r = 0; r < tree.rounds.size(); r++) {
                     for (Match m : tree.rounds.get(r)) {
@@ -4013,6 +5196,7 @@ public class KOFragment extends Fragment {
                 }
             }
         }
+        } // end else
         
         return csv.toString();
     }
@@ -4054,9 +5238,9 @@ public class KOFragment extends Fragment {
         container.setBackgroundColor(Color.WHITE);
         container.setGravity(Gravity.CENTER);
         
-        // Vertical label "KO" on the left
+        // Vertical label showing modus name on the left
         TextView label = new TextView(getContext());
-        label.setText("KO");
+        label.setText(KO_MODUS_LABELS[koModus]);
         label.setTextColor(0xFF333333);
         label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 24);
         label.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -4179,6 +5363,7 @@ public class KOFragment extends Fragment {
     private void processRestoredMatches(List<String> lines) {
         int koSize = 8;
         boolean repechageEnabled = false;
+        int restoredModus = 0;
         
         // Parse metadata line
         for (String line : lines) {
@@ -4188,105 +5373,91 @@ public class KOFragment extends Fragment {
                     koSize = Integer.parseInt(parts[1].trim());
                     repechageEnabled = Boolean.parseBoolean(parts[2].trim());
                 }
+                if (parts.length >= 4) {
+                    try { restoredModus = Integer.parseInt(parts[3].trim()); } catch (Exception e) {}
+                }
                 break;
             }
         }
         
-        // Setup number of participants from koSize
+        // Setup state
         koNrPart = koSize;
         koRepechage = repechageEnabled;
+        koModus = restoredModus;
         
-        // Load appropriate KO tree structure
-        loadKOTree(koNrPart, koRepechage);
+        // Update spinner state
+        if (modusSpinnerRef != null) {
+            modusSpinnerRef.setOnItemSelectedListener(null);
+            modusSpinnerRef.setSelection(koModus);
+            setupModusSpinner(modusSpinnerRef, koBoxLayoutRef);
+            modusSpinnerRef.setSelection(koModus);
+        }
         
-        // Update checkbox state
-        if (repechageCheckboxRef != null) {
-            repechageCheckboxRef.setOnCheckedChangeListener(null);
-            repechageCheckboxRef.setChecked(koRepechage);
-            repechageCheckboxRef.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                koRepechage = isChecked;
-                int nrPartVal = getKONrPart();
-                
-                // Save ALL match results before reloading using round/match indices
-                java.util.Map<String, int[]> savedResults = new java.util.HashMap<>();
-                for (int r = 0; r < koRounds.size(); r++) {
-                    List<Match> round = koRounds.get(r);
-                    for (int mi = 0; mi < round.size(); mi++) {
-                        Match m = round.get(mi);
-                        if (m.score1 >= 0 && m.score2 >= 0) {
-                            String key = "R1|R" + r + "|M" + mi;
-                            savedResults.put(key, new int[]{m.score1, m.score2});
-                        }
-                    }
+        if (koModus >= 2) {
+            // Quick KO or Mix-Rounds: rebuild groups from Merged then apply scores
+            loadParticipantNamesFromMerged();
+            java.util.List<String[]> mergedData = loadMergedParticipantData();
+            if (mergedData != null && !mergedData.isEmpty()) {
+                koGroups.clear();
+                if (koModus >= 2 && koModus <= 4) {
+                    buildQuickKOGroups(mergedData);
+                } else {
+                    buildMixRoundsGroups(mergedData);
                 }
-                for (RepechageTree tree : allRepechageTrees) {
-                    if (tree.treeId.equals("R1")) continue;
-                    for (int r = 0; r < tree.rounds.size(); r++) {
-                        List<Match> round = tree.rounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            if (m.score1 >= 0 && m.score2 >= 0) {
-                                String key = tree.treeId + "|R" + r + "|M" + mi;
-                                savedResults.put(key, new int[]{m.score1, m.score2});
-                            }
-                        }
-                    }
+                for (KOGroup group : koGroups) {
+                    buildGroupKOTree(group);
                 }
                 
-                loadKOTree(nrPartVal, koRepechage);
-                
-                // Restore saved match results to main bracket
-                for (int r = 0; r < koRounds.size(); r++) {
-                    List<Match> round = koRounds.get(r);
-                    for (int mi = 0; mi < round.size(); mi++) {
-                        Match m = round.get(mi);
-                        String key = "R1|R" + r + "|M" + mi;
-                        if (savedResults.containsKey(key)) {
-                            int[] scores = savedResults.get(key);
-                            m.score1 = scores[0];
-                            m.score2 = scores[1];
-                            if (m.score1 > m.score2) {
-                                m.winner = getKOName(m.p1, getKOParticipantNames());
-                            } else if (m.score2 > m.score1) {
-                                m.winner = getKOName(m.p2, getKOParticipantNames());
-                            }
-                        }
-                    }
-                }
-                // Restore saved match results to all repechage trees
-                for (RepechageTree tree : allRepechageTrees) {
-                    if (tree.treeId.equals("R1")) continue;
-                    for (int r = 0; r < tree.rounds.size(); r++) {
-                        List<Match> round = tree.rounds.get(r);
-                        for (int mi = 0; mi < round.size(); mi++) {
-                            Match m = round.get(mi);
-                            String key = tree.treeId + "|R" + r + "|M" + mi;
-                            if (savedResults.containsKey(key)) {
-                                int[] scores = savedResults.get(key);
-                                m.score1 = scores[0];
-                                m.score2 = scores[1];
-                                if (m.score1 > m.score2) {
-                                    m.winner = getKOName(m.p1, getKOParticipantNames());
-                                } else if (m.score2 > m.score1) {
-                                    m.winner = getKOName(m.p2, getKOParticipantNames());
+                // Apply match data from lines to groups
+                for (String line : lines) {
+                    if (line.startsWith("#") || line.startsWith("Tree,")) continue;
+                    String[] parts = line.split(",", -1);
+                    if (parts.length < 7) continue;
+                    
+                    String groupId = parts[0].trim();
+                    int roundIdx, matchIdx;
+                    try {
+                        roundIdx = Integer.parseInt(parts[1].trim()) - 1;
+                        matchIdx = Integer.parseInt(parts[2].trim()) - 1;
+                    } catch (Exception e) { continue; }
+                    
+                    String p1 = parts[3];
+                    String score1Str = parts[4];
+                    String p2 = parts[5];
+                    String score2Str = parts[6];
+                    
+                    int s1 = -1, s2 = -1;
+                    try { if (!score1Str.isEmpty()) s1 = Integer.parseInt(score1Str); } catch (Exception e) {}
+                    try { if (!score2Str.isEmpty()) s2 = Integer.parseInt(score2Str); } catch (Exception e) {}
+                    
+                    for (KOGroup group : koGroups) {
+                        if (group.groupId.equals(groupId)) {
+                            if (roundIdx >= 0 && roundIdx < group.rounds.size()) {
+                                List<Match> round = group.rounds.get(roundIdx);
+                                if (matchIdx >= 0 && matchIdx < round.size()) {
+                                    Match m = round.get(matchIdx);
+                                    m.p1 = p1;
+                                    m.p2 = p2;
+                                    m.score1 = s1;
+                                    m.score2 = s2;
+                                    if (s1 > s2) m.winner = p1;
+                                    else if (s2 > s1) m.winner = p2;
                                 }
                             }
+                            break;
                         }
                     }
                 }
                 
-                String[] participantNames = getKOParticipantNames();
-                if (participantNames != null) {
-                    autoAdvanceEmptyMatches(participantNames);
-                    if (koRepechage && !losersRounds.isEmpty()) {
-                        propagateLosersToLosersBracket(participantNames);
-                        autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-                    }
+                // Auto-advance and propagate within each group
+                for (KOGroup group : koGroups) {
+                    autoAdvanceEmptyMatchesInGroup(group);
+                    propagateGroupWinners(group);
                 }
-                propagateKOWinners();
-                renderKOTable(koBoxLayoutRef);
-            });
-        }
+            }
+        } else {
+        // Standard KO / Repechage: load tree and apply scores
+        loadKOTree(koNrPart, koRepechage);
         
         // Apply match data from lines
         for (String line : lines) {
@@ -4336,12 +5507,7 @@ public class KOFragment extends Fragment {
             }
         }
         
-        // Render the KO table
-        if (koBoxLayoutRef != null) {
-            renderKOTable(koBoxLayoutRef);
-        }
-        
-        // Auto-advance and propagate matches after restore
+        // Auto-advance and propagate
         String[] participantNames = getKOParticipantNames();
         if (participantNames != null) {
             autoAdvanceEmptyMatches(participantNames);
@@ -4349,15 +5515,13 @@ public class KOFragment extends Fragment {
                 propagateLosersToLosersBracket(participantNames);
                 autoAdvanceEmptyMatchesInLosersBracket(participantNames);
             }
-            // Re-render after propagation
-            if (koBoxLayoutRef != null) {
-                renderKOTable(koBoxLayoutRef);
-            }
         }
+        propagateKOWinners();
+        } // end else (standard KO)
         
-        // Enable repechage checkbox if repechage trees are detected
-        if (repechageCheckboxRef != null && koRepechage) {
-            repechageCheckboxRef.setEnabled(true);
+        // Render the KO table
+        if (koBoxLayoutRef != null) {
+            renderKOTable(koBoxLayoutRef);
         }
     }
 }

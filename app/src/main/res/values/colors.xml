@@ -29,4 +29,7 @@
     <color name="colorOnSurface">#FF000000</color>
     <color name="colorBackground">#FFFFFFFF</color>
     <color name="colorOnBackground">#FF000000</color>
+    
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#FF001582</color>
 </resources>

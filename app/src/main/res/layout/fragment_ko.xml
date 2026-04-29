@@ -24,13 +24,13 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
-                <CheckBox
-                    android:id="@+id/ko_repechageCheckbox"
+                <Spinner
+                    android:id="@+id/ko_modusSpinner"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:textColor="@color/black"
-                    android:text="Repechage" />
+                    android:layout_marginEnd="8dp"
+                    android:background="@android:color/black"
+                    android:popupBackground="@android:color/black" />
                 <Button
                     android:id="@+id/ko_reloadBtn"
                     android:layout_width="wrap_content"
@@ -38,6 +38,7 @@
                     android:layout_marginEnd="4dp"
                     android:backgroundTint="#388E3C"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="RELOAD" />
                 <Button
                     android:id="@+id/ko_replaceBtn"
@@ -46,6 +47,7 @@
                     android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="REPLACE" />
                 <Button
                     android:id="@+id/ko_restoreCrashBtn"
@@ -54,6 +56,7 @@
                     android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="RESTORE CRASH" />
                 <Button
                     android:id="@+id/ko_qrOutBtn"
@@ -62,6 +65,7 @@
                     android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="QR OUT" />
                 <Button
                     android:id="@+id/ko_qrInBtn"
@@ -70,6 +74,7 @@
                     android:layout_marginEnd="4dp"
                     android:backgroundTint="#1565C0"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="QR IN" />
                 <Button
                     android:id="@+id/ko_saveBtn"
@@ -77,6 +82,7 @@
                     android:layout_height="wrap_content"
                     android:backgroundTint="#D32F2F"
                     android:textColor="#FFFFFF"
+                    android:singleLine="true"
                     android:text="SAVE" />
             </LinearLayout>
 

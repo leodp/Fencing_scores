@@ -1,5 +1,45 @@
 # Changelog
 
+## [V1.5 - 2026-04-30]
+
+### Icon
+- Changed icon background to #001582 for consistent display across Android launchers
+- Added adaptive icon support (mipmap-anydpi-v26) with proper foreground/background layers
+- Reduced foreground image size to prevent cropping on round icon shapes
+
+### KO Page - New Modes
+- Replaced Repechage checkbox with a pulldown menu (8 KO modes)
+- New modes: Quick KO (1:2, 1-4, 1-8 groupings) and Mix-Rounds (by P value)
+- Quick KO creates smaller brackets from FinalPos-sorted participants
+- Mix-Rounds groups participants by their P ranking from Merged page
+- Mix-Rounds entries disabled when only one participant has P=1
+- Groups padded with "Empty" to next power-of-2, auto-advanced (15:0)
+- Multi-group grid layout: groups arranged side-by-side and wrapped by screen width
+
+### KO Page - Visual Improvements
+- Position numbers shown in front of participant names in all modes
+- Match boxes have rounded corners and border consistently across all modes
+- Compact bracket positioning: later rounds overlap horizontally when no vertical collision
+- Pulldown menu styled with black background and white bold text
+- Spinner properly sized on initial load to fit all mode labels
+- Color theme changes from Rounds page now reflected immediately in KO
+
+### KO Page - Bug Fixes
+- Fixed crash (NPE) in Quick KO 1-4, 1-8 and all Mix-Rounds modes caused by text measurement on detached Button
+- Fixed score entry popup to use same two-dialog pattern as standard KO
+
+### KO Page - Data Format
+- Backup/CSV/QR format updated: META line now includes koModus field
+- Group tree data uses "G1", "G2", etc. identifiers for Quick/Mix modes
+- Import correctly restores KO mode and spinner selection
+- QR code label matches selected pulldown menu text
+
+### Merged Page
+- P column cells re-enabled for editing with numeric input
+- Fixed P value being overwritten by FinalPos during CSV import
+- Save filename defaults to `MergedRanking_YYYYMMDD_hh.mm.ss.csv`
+- QR code label changed to "MergedRanking"
+
 ## [V1.2 - 2026-04-29]
 
 ### Rounds Page

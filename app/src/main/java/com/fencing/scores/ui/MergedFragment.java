@@ -277,7 +277,7 @@ public class MergedFragment extends Fragment {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
             intent.setType("text/csv");
-            intent.putExtra(android.content.Intent.EXTRA_TITLE, generateTimestampedFilename("RankingRounds"));
+            intent.putExtra(android.content.Intent.EXTRA_TITLE, generateTimestampedFilename("MergedRanking"));
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 try {
                     intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
@@ -751,10 +751,7 @@ public class MergedFragment extends Fragment {
                             if (idxFinalPos >= 0 && idxFinalPos < tokens.length && !tokens[idxFinalPos].trim().isEmpty()) {
                                 finalPos = parseIntSafe(tokens[idxFinalPos]);
                             }
-                            // If FinalPos was in CSV, use it; otherwise set P as initial position
-                            if (finalPos != null) {
-                                p = finalPos; // Keep P in sync with FinalPos
-                            }
+                            // P is kept as-is from CSV — never overwritten by FinalPos
                             
                             csvRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
                             android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
@@ -1159,9 +1156,9 @@ public class MergedFragment extends Fragment {
                         return true;
                     });
                 } else {
-                // P and FinalPos cells: no click editing
-                if (colIdx == 7 || colIdx == 8) {
-                    // No click action for P and FinalPos cells
+                // FinalPos cells: no click editing
+                if (colIdx == 8) {
+                    // No click action for FinalPos cells
                 } else {
                 cell.setOnClickListener(v -> {
                     EditText input = new EditText(getContext());
@@ -1640,7 +1637,7 @@ public class MergedFragment extends Fragment {
         
         // Vertical label "Merged ranking" on the left
         TextView label = new TextView(requireContext());
-        label.setText("Merged ranking");
+        label.setText("MergedRanking");
         label.setTextColor(0xFF333333);
         label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
         label.setTypeface(null, android.graphics.Typeface.BOLD);

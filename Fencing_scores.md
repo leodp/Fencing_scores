@@ -344,3 +344,41 @@ Shared data across all fragments:
 ### Conclusion
 - compile the release, ask for my feedback on it, if it's ok upload the changes to github, updating the release to V1.2 and adding the changes to the Changelog (in a synthetic, not too detailed way)
 
+## Enhancements version 1.5
+
+### Icon
+- The background of the icon can be undefined in some Android or homepage implementations (example: A16, with round icons: it shows a white background). If possible change the icon background to  (#001582)
+
+### KO modus and interface
+- There is now a checkbox to define the KO modus: simple or with Repechage
+- Substitute the button with a pulldown menu, defaulting to KO with the following entries:
+  - KO
+  - KO with Repechage
+  - Quick KO 1:2 3:4  5:6...  
+  - Quick KO 1-4 5-8  9-12...
+  - Quick KO 1-8 9-16 17-24...
+  - Mix-Rounds 1:1 2:2 3:3     
+  - Mix-Rounds 1-2:1-2  3-4:3-4
+  - Mix-Rounds 1-4:1-4  5-8:5-8
+- The first two entries in the pulldown are the already implemented KO rounds
+- The Quick KO create smaller KO rounds from the general ranking (FinalPos) for a quicker KO execution, with the following rules:
+  - #1 meets #2, #3 meets #4 (and so on) to decide their respective position. 
+  - alternatively (pulldown entries 4 & 5, Quick KO) small KO rounds without repechage are done, composed of classified #1 to #4, #5 to #8 and so on, or #1 to #8, #9 to #16 and so on. Each small KO round organizes the matches as a 2 or 4 simple KO round, each according to the FinalPos of the participants (example: #1 Vs #4, #2 Vs #3 and so on)
+- The Mix-Rounds entries combine participants coming from distinct Rounds, according to the P (not FinalPos) ranking in Merged page
+  - All the P=1 meet to decide the first positions, then the P=2, and all the rest to define all other positions. For more than 2 people present in each small KO round, in each small Mix round the matches are organized according to the FinalPos ranking (for example if 4 people are present the best ranking one is meeting the worst one, the second best meets the third best. For the Mix rounds with 8 participants the individual Matchign rules are similar, with the same method defined for the KO rounds, eventually filled with EMPTY entries that are then removed when calculating the Final ranking) 
+  - For the second Mix entry P=1 and P=2 all meet in a small KO round without Repechage, and the same happens to (P3 and P=4), and to the remaining participants.  For more than 2 people present in each small KO round, in each small Mix round the matches are organized according to the FinalPos ranking (for example if 4 people are present the best ranking one is meeting the worst one, the second best meets the third best. For the Mix rounds with 8 participants the individual Matchign rules are similar, with the same method defined for the KO rounds, eventually filled with EMPTY entries that are then removed when calculating the Final ranking)
+  - When clicking on the pulldown menu, the P values in Merged are evaluated. Mix-Rounds entries are disabled if there is only one participant with value P=1, otherwise they are enabled. Participants with P=0 are not considered
+- It's clear that for the Final ranking each Quick and Mix group will mix only the positions of the participants matching within themselves, without allowing their rank to go below or above the ranking of participants in other rounds of KO. When generating the Mix-Rounds care has to be taken to properly consider the position of participants, based on the P saved in Merged, and not on FinalPos as usual.
+- EMPTY entry participants will be added as in KO and KO with Repechage to fill the groups, propagating the results as usual (Empty loses 15:0), but removing all Empty from the Final rank.
+- Prepare a format to export the KO page (including the pulldown menu) to a QR code and to a csv file, including the backup file. You can use a format incompatible to previous version, if necessary. Importing the QR or the csv also sets the pulldown menu and the KO Modus correctly
+- Give a title to each Quick and Mix Tree, like for example "Quick 1:2" or "Quick 1-4", or "Mix 1-4:1-4". Choose appropriately 
+- The RELOAD button fills in the Participants according to the KO Modus chosen
+- For the Quick and Mix pulldown selections, based also on the size of the rounds evaluated at runtime, please come up with meaningful KO Round trees layout that is clear to understand and also makes efficient use of the display. You can place distinct trees one-beside the other and/or one below the other. Do not give a title to them (as previously was "Round n")
+- When generating the buttons at the top of the screen please take care that there's enough space in the KO page. At the moment the QR add appears small and empty, limited by the size of the device display, and the SAVE button is missing. This happens probably because the width of the pulldown mmenu button is at the default/start very wide, but only the "KO" text is printed. This is solved when another entry is selected, and KO is then selected again: in this case the KO button menu is resized and the other buttons are properly placed. Debug this
+- At the moment the KO Round trees for the Quick entries are not displayed. Verify the reason before deleting and re-implementing the code
+- The popup menu for entering the Quick and Mix results is not correct: there is the name of the first participant, then fields for the results, followed by the name of the second participant in the direct KO. Copy the schema of implementation from the simple KO round, with two popup menus appearing for the touches of the two participants.
+- In the QR code, instead of the text "KO" print beside the QR code the same text as in the pulldown menu
+- The icon of the installed apk has an image that is too big in case the icon is round (Some Homepage or Android 16 implementations). Make the image smaller, so that it is not cropped by a round icon
+ 
+### Merged page
+- P columns cells values are enabled again for editing, with the same text entry setup as, for example the % column

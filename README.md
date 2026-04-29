@@ -32,10 +32,20 @@ A comprehensive Android application for managing fencing tournament scores, from
 
 ### KO (Knockout Phase)
 - Visual bracket display with boxes for each match
-- Repechage checkbox for double-elimination support
+- **8 KO modes** via pulldown menu:
+  - **KO** — Standard single-elimination
+  - **KO with Repechage** — Double elimination for losers
+  - **Quick KO 1:2** — #1 vs #2, #3 vs #4, etc.
+  - **Quick KO 1-4** — Groups of 4 by FinalPos ranking
+  - **Quick KO 1-8** — Groups of 8 by FinalPos ranking
+  - **Mix-Rounds 1:1 2:2** — Groups by P value (one P per group)
+  - **Mix-Rounds 1-2:1-2** — Groups by paired P values
+  - **Mix-Rounds 1-4:1-4** — Groups of 4 P values
 - Automatic participant seeding from Merged rankings
+- Compact bracket layout with horizontal overlap when possible
 - Buttons: RELOAD, REPLACE, RESTORE CRASH, QR OUT, QR IN, SAVE
-- Support for 8, 16, 32, 64 participant brackets
+- Support for 8, 16, 32, 64 participant brackets (auto-padded with Empty)
+- Color themes synced with Round page
 - Portrait orientation
 
 ### Final (Results)
@@ -151,4 +161,8 @@ This project is licensed under the GNU General Public License V3.0.
 
 ## Icon
 
-The app icon features a fencer with an epee.
+The app icon features a fencer with an epee on a dark blue (#001582) background, with adaptive icon support for round and shaped launchers.
+
+## Version
+
+Current release: **V1.5** — See [CHANGELOG.md](CHANGELOG.md) for full history.
