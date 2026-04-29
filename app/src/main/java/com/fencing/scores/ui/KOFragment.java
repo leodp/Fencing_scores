@@ -1978,6 +1978,14 @@ public class KOFragment extends Fragment {
         int defaultBoxWidthPx = (int) (120 * density);
         int columnSpacingPx = (int) (8 * density);
 
+        // Detect Third Place round in non-repechage mode:
+        // Last round has 1 match with L refs (losers from semifinals), and there are at least 3 rounds
+        boolean hasThirdPlace = !koRepechage && totalRounds >= 3
+            && koRounds.get(totalRounds - 1).size() == 1
+            && koRounds.get(totalRounds - 2).size() == 1;
+        // Number of rounds to lay out in the normal column progression (excluding Third Place)
+        int layoutRounds = hasThirdPlace ? totalRounds - 1 : totalRounds;
+
         // Calculate width for Round 1 only, then use it for ALL rounds
         int[] roundWidth = new int[totalRounds];
         int round1Width = defaultBoxWidthPx;
@@ -2012,7 +2020,7 @@ public class KOFragment extends Fragment {
         // Measure header height (approximate)
         int headerHeightPx = (int) (24 * density); // header text + padding
         roundXOffset[0] = 0;
-        for (int r = 1; r < totalRounds; r++) {
+        for (int r = 1; r < layoutRounds; r++) {
             java.util.List<Float> prevY = matchYPixels.get(r - 1);
             java.util.List<Float> currY = matchYPixels.get(r);
             
@@ -2055,21 +2063,49 @@ public class KOFragment extends Fragment {
             roundXOffset[r] = roundXOffset[r - 1] + step;
         }
 
-        // Calculate total width and height needed
-        int totalWidth = (totalRounds > 0) ? roundXOffset[totalRounds - 1] + round1Width : 0;
+        // Calculate total width and height needed (excluding Third Place from normal layout)
+        int totalWidth = (layoutRounds > 0) ? roundXOffset[layoutRounds - 1] + round1Width : 0;
         float maxY = 0;
-        for (java.util.List<Float> ry : matchYPixels) {
-            for (float y : ry) {
+        for (int r = 0; r < layoutRounds; r++) {
+            for (float y : matchYPixels.get(r)) {
                 if (y + boxHeightPx > maxY) maxY = y + boxHeightPx;
             }
         }
+
+        // If Third Place exists, position it just below the 1:2 final, shifted 1/4 box width to the right
+        int thirdPlaceXOff = 0;
+        int thirdPlaceYOff = 0;
+        if (hasThirdPlace) {
+            int finalRoundIdx = layoutRounds - 1; // The 1:2 Final round
+            int semiRoundIdx = finalRoundIdx - 1; // The Semifinals round
+            float finalY = matchYPixels.get(finalRoundIdx).get(0);
+            // Find the bottom of the lowest semifinal box
+            float maxSemiY = 0;
+            for (float sy : matchYPixels.get(semiRoundIdx)) {
+                if (sy + boxHeightPx > maxSemiY) maxSemiY = sy + boxHeightPx;
+            }
+            // Y: below both the Final and the lowest Semifinal box, with 24dp gap
+            int gapPx = (int) (24 * density);
+            float belowFinal = finalY + boxHeightPx + gapPx;
+            float belowSemi = maxSemiY + gapPx;
+            thirdPlaceYOff = (int) Math.max(belowFinal, belowSemi);
+            // X: 1/4 of box width to the right of the 1:2 Final
+            thirdPlaceXOff = roundXOffset[finalRoundIdx] + round1Width / 4;
+            // Update maxY to include the Third Place box
+            float thirdPlaceBottom = thirdPlaceYOff + boxHeightPx;
+            if (thirdPlaceBottom > maxY) maxY = thirdPlaceBottom;
+            // Ensure totalWidth accommodates the Third Place box
+            int thirdPlaceRight = thirdPlaceXOff + round1Width;
+            if (thirdPlaceRight > totalWidth) totalWidth = thirdPlaceRight;
+        }
+
         int totalHeight = (int) maxY + headerHeightPx + (int)(8 * density);
 
         android.widget.FrameLayout columnsContainer = new android.widget.FrameLayout(getContext());
         columnsContainer.setLayoutParams(new LinearLayout.LayoutParams(totalWidth, totalHeight));
 
-        // Build each round: header + buttons positioned absolutely
-        for (int r = 0; r < totalRounds; r++) {
+        // Build each round: header + buttons positioned absolutely (excluding Third Place)
+        for (int r = 0; r < layoutRounds; r++) {
             int xOff = roundXOffset[r];
             
             // Add header for this round
@@ -2097,6 +2133,35 @@ public class KOFragment extends Fragment {
                     roundWidth[r], boxHeightPx);
                 params.leftMargin = xOff;
                 params.topMargin = (int) yPx + headerHeightPx;
+                btn.setLayoutParams(params);
+                columnsContainer.addView(btn);
+            }
+        }
+
+        // Render Third Place match below the 1:2 Final, shifted right
+        if (hasThirdPlace) {
+            int tpRoundIdx = totalRounds - 1;
+            // Add "Final 3rd:4th pos." header
+            TextView tpHeader = new TextView(getContext());
+            tpHeader.setText("Final 3rd:4th pos.");
+            tpHeader.setTextColor(Color.BLACK);
+            tpHeader.setGravity(Gravity.CENTER);
+            tpHeader.setTypeface(null, android.graphics.Typeface.BOLD_ITALIC);
+            tpHeader.setPadding(8, 4, 8, 4);
+            android.widget.FrameLayout.LayoutParams tpHeaderParams = new android.widget.FrameLayout.LayoutParams(
+                roundWidth[tpRoundIdx], android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+            tpHeaderParams.leftMargin = thirdPlaceXOff;
+            tpHeaderParams.topMargin = thirdPlaceYOff + headerHeightPx - (int)(20 * density);
+            tpHeader.setLayoutParams(tpHeaderParams);
+            columnsContainer.addView(tpHeader);
+
+            java.util.List<Button> tpBtns = matchButtons.get(tpRoundIdx);
+            for (int m = 0; m < tpBtns.size(); m++) {
+                Button btn = tpBtns.get(m);
+                android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                    roundWidth[tpRoundIdx], boxHeightPx);
+                params.leftMargin = thirdPlaceXOff;
+                params.topMargin = thirdPlaceYOff + headerHeightPx;
                 btn.setLayoutParams(params);
                 columnsContainer.addView(btn);
             }
