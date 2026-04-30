@@ -551,9 +551,9 @@ public class RoundFragment extends Fragment {
                     return true;
                 });
             }
-            // Add export to CSV on header click (was long-press)
+            // Add QR code generation on header click (was CSV export)
                 if (i != nrPart + 7) { // Do not set short click for P header
-                    cell.setOnClickListener(v -> saveCsvDirectToDocumentsAuto());
+                    cell.setOnClickListener(v -> generateAndShowRoundQrCode());
                 }
             row.addView(cell);
         }

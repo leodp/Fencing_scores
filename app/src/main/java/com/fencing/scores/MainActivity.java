@@ -289,6 +289,19 @@ public class MainActivity extends AppCompatActivity {
                 edgeFlingDetector.onTouchEvent(event);
                 return false; // Don't consume - let ViewPager2 handle normally
             });
+            
+            // Reduce touch slop for more responsive page swiping
+            // Nested ScrollViews compete with ViewPager2; halving the slop makes page swipes easier to trigger
+            if (recyclerView instanceof androidx.recyclerview.widget.RecyclerView) {
+                try {
+                    java.lang.reflect.Field touchSlopField = androidx.recyclerview.widget.RecyclerView.class.getDeclaredField("mTouchSlop");
+                    touchSlopField.setAccessible(true);
+                    int currentSlop = (int) touchSlopField.get(recyclerView);
+                    touchSlopField.set(recyclerView, currentSlop / 2);
+                } catch (Exception e) {
+                    android.util.Log.w("MainActivity", "Could not reduce touch slop: " + e.getMessage());
+                }
+            }
         }
         
         // All pages use landscape orientation - no orientation changes needed
@@ -307,6 +320,21 @@ public class MainActivity extends AppCompatActivity {
         // Create CRASH.txt when app becomes visible
         // If app crashes, this file will remain and signal crash on next start
         createCrashFile();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Clear FLAG_KEEP_SCREEN_ON - let screen dim naturally based on system timeout
+        // This ensures normal screen timeout behavior to save battery while in use
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // When app goes to background: ensure screen can turn off
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     @Override

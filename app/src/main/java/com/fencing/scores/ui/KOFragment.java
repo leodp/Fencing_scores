@@ -501,9 +501,13 @@ public class KOFragment extends Fragment {
             modusSpinner.requestLayout();
         });
 
-        // Observe ViewModel and update KO table reactively
-        scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> renderKOTable(koBoxLayout));
-        scoresViewModel.getNrPart().observe(getViewLifecycleOwner(), n -> renderKOTable(koBoxLayout));
+        // Observe ViewModel and update KO table reactively (only when resumed to save battery)
+        scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> {
+            if (isResumed()) renderKOTable(koBoxLayout);
+        });
+        scoresViewModel.getNrPart().observe(getViewLifecycleOwner(), n -> {
+            if (isResumed()) renderKOTable(koBoxLayout);
+        });
         scoresViewModel.getColorCycleIndex().observe(getViewLifecycleOwner(), idx -> {
             if (isResumed()) {
                 renderKOTable(koBoxLayout);
@@ -1908,24 +1912,60 @@ public class KOFragment extends Fragment {
     }
     
     // Calculate rankings for Quick KO / Mix-Rounds modes (multiple independent groups)
+    // All participants are always included. Within each group (tree), participants from
+    // earlier groups rank above those in later groups. Within each group, ranking follows
+    // the same logic as standard KO: active participants (who won a match and are waiting
+    // for the next round) rank above eliminated participants at the same round level.
+    // FinalPos is used as tiebreaker within the same status/round.
     private java.util.List<String> calculateGroupKORankings() {
         java.util.List<String> rankings = new java.util.ArrayList<>();
+        
+        // Load FinalPos for tiebreaking (same as standard KO)
+        final java.util.Map<String, Integer> nameToFinalPos = loadFinalPosFromMerged();
         
         for (KOGroup group : koGroups) {
             java.util.List<String> groupRankings = new java.util.ArrayList<>();
             
-            if (group.rounds.isEmpty()) {
-                // Single participant group
-                for (String name : group.participants) {
-                    if (!name.equals("Empty")) groupRankings.add(name);
+            // Collect all non-Empty participants in this group
+            java.util.Set<String> allParticipants = new java.util.LinkedHashSet<>();
+            for (String name : group.participants) {
+                if (name != null && !name.equals("Empty") && !name.trim().isEmpty()) {
+                    allParticipants.add(name);
                 }
+            }
+            
+            if (group.rounds.isEmpty()) {
+                // No rounds (single participant or uninitialized) - rank by FinalPos
+                java.util.List<String> sorted = new java.util.ArrayList<>(allParticipants);
+                sorted.sort((a, b) -> {
+                    int posA = nameToFinalPos.getOrDefault(a, 999);
+                    int posB = nameToFinalPos.getOrDefault(b, 999);
+                    return Integer.compare(posA, posB);
+                });
+                groupRankings.addAll(sorted);
             } else {
-                // Track elimination rounds
-                java.util.Map<String, Integer> nameToRound = new java.util.HashMap<>();
-                String finalWinner = null;
-                String finalLoser = null;
+                // Assign a "progress score" to each participant, mirroring standard KO logic:
+                // - Won the final (last round) → highest score (active at totalRounds)
+                // - Lost the final → score just below winner
+                // - Won at round r, waiting for round r+1 → active at round r+1
+                // - Lost at round r → eliminated at round r
+                // - Haven't played yet → active at round 0
+                // Active at round r ranks ABOVE eliminated at round r.
+                // Score formula: active at round r = r*2 + 1, eliminated at round r = r*2
+                // Final winner = totalRounds*2 + 1, final loser = totalRounds*2
                 
-                int lastRoundIdx = group.rounds.size() - 1;
+                int totalRounds = group.rounds.size();
+                int lastRoundIdx = totalRounds - 1;
+                
+                // Track: participant -> progress score
+                java.util.Map<String, Integer> progressScore = new java.util.HashMap<>();
+                // Track: participants who won a match (active, advanced to next round)
+                java.util.Set<String> activeWinners = new java.util.HashSet<>();
+                
+                // Initialize all participants as "active at round 0" (haven't played)
+                for (String name : allParticipants) {
+                    progressScore.put(name, 1); // 0*2 + 1 = 1 (active at round 0)
+                }
                 
                 for (int r = 0; r < group.rounds.size(); r++) {
                     for (Match m : group.rounds.get(r)) {
@@ -1940,30 +1980,43 @@ public class KOFragment extends Fragment {
                             String loser = m.winner.equals(p1Name) ? p2Name : p1Name;
                             
                             if (r == lastRoundIdx) {
-                                finalWinner = m.winner;
-                                finalLoser = loser;
+                                // Final match
+                                if (!m.winner.equals("Empty")) {
+                                    progressScore.put(m.winner, totalRounds * 2 + 1); // Final winner
+                                }
+                                if (loser != null && !loser.equals("Empty")) {
+                                    progressScore.put(loser, totalRounds * 2); // Final loser
+                                }
                             } else {
-                                if (!loser.equals("Empty") && !nameToRound.containsKey(loser)) {
-                                    nameToRound.put(loser, r);
+                                // Winner advances to round r+1
+                                if (!m.winner.equals("Empty")) {
+                                    progressScore.put(m.winner, (r + 1) * 2 + 1); // Active at round r+1
+                                    activeWinners.add(m.winner);
+                                }
+                                // Loser eliminated at round r
+                                if (loser != null && !loser.equals("Empty")) {
+                                    progressScore.put(loser, r * 2); // Eliminated at round r
                                 }
                             }
                         }
                     }
                 }
                 
-                if (finalWinner != null && !finalWinner.equals("Empty")) groupRankings.add(finalWinner);
-                if (finalLoser != null && !finalLoser.equals("Empty")) groupRankings.add(finalLoser);
-                
-                // Sort eliminated participants: later round = better rank
-                java.util.List<java.util.Map.Entry<String, Integer>> sorted = 
-                    new java.util.ArrayList<>(nameToRound.entrySet());
-                sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-                
-                for (java.util.Map.Entry<String, Integer> entry : sorted) {
-                    if (!entry.getKey().equals("Empty") && !groupRankings.contains(entry.getKey())) {
-                        groupRankings.add(entry.getKey());
+                // Sort all participants by progress score (descending), then FinalPos (ascending)
+                java.util.List<String> sortedAll = new java.util.ArrayList<>(allParticipants);
+                sortedAll.sort((a, b) -> {
+                    int scoreA = progressScore.getOrDefault(a, 1);
+                    int scoreB = progressScore.getOrDefault(b, 1);
+                    if (scoreA != scoreB) {
+                        return Integer.compare(scoreB, scoreA); // Higher score = better rank
                     }
-                }
+                    // Same score: use FinalPos (lower = better)
+                    int posA = nameToFinalPos.getOrDefault(a, 999);
+                    int posB = nameToFinalPos.getOrDefault(b, 999);
+                    return Integer.compare(posA, posB);
+                });
+                
+                groupRankings.addAll(sortedAll);
             }
             
             rankings.addAll(groupRankings);

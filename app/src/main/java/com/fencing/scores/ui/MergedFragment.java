@@ -112,9 +112,9 @@ public class MergedFragment extends Fragment {
                         public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
                             super.onViewCreated(view, savedInstanceState);
                             scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
-                            // Observe colorCycleIndex and update table colors when it changes
+                            // Observe colorCycleIndex and update table colors when it changes (only when resumed)
                             scoresViewModel.getColorCycleIndex().observe(getViewLifecycleOwner(), idx -> {
-                                renderRows();
+                                if (isResumed()) renderRows();
                             });
                             // Debug: log fragment created
                             android.util.Log.d("MergedFragment", "onViewCreated: MergedFragment created and observers set");

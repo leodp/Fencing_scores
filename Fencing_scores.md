@@ -4,7 +4,7 @@
 Android app for managing complete fencing tournaments: pool rounds, merged rankings, knockout brackets, and final results.
 
 **License:** GNU General Public License V3.0  
-**Version:** 1.5  
+**Version:** 1.6  
 **Target:** Android 11+ (API 30+, target API 34)  
 **App Name:** "Fence!"  
 **APK Filename:** `Fence.apk` (project root — ready to install)  
@@ -87,6 +87,11 @@ Navigation: Swipe left/right to cycle through pages. Long-press on Final returns
   - QR IN: Scan QR code to import
   - QUIT: Exit app (red, bold) — clears all backup files for a clean restart
 - **Content:** Help text from assets/help.txt
+
+#### Header Row Click Actions
+- **Nr, Name, 1-N, V, →, ←, I, % headers:** Click generates and shows a fullscreen QR code of the round data (with table screenshot as background)
+- **V, →, ←, I, % headers:** Click also cycles color theme
+- **P header:** Long-press sorts participants by ranking
 
 ### Calculations
 All calculated only for participants with non-empty names:

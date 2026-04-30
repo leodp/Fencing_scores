@@ -1,5 +1,29 @@
 # Changelog
 
+## [V1.6 - 2026-04-30]
+
+### Round Page
+- Header row click action changed from CSV export to QR code generation
+- QR code displayed fullscreen with table screenshot as background (same as Help → QR OUT)
+
+### KO Page - Quick & Mix Ranking Fix
+- Fixed Quick KO and Mix-Rounds ranking to include all participants from the start
+- Ranking now calculated immediately when KO starts, using FinalPos as initial ordering
+- After each match, ranking is updated: match results take priority, FinalPos used as tiebreaker
+- Participants in earlier groups (e.g., Quick 1:2) always rank above those in later groups (e.g., Quick 3:4)
+- Unresolved participants (no match played yet) ranked by FinalPos within their group
+- Aligned behavior with standard KO mode which uses FinalPos for tiebreaking
+- Progress-score system: active participants (won last match, waiting for next round) rank above eliminated participants at the same round level
+
+### Navigation
+- Improved page swipe responsiveness by reducing ViewPager2 internal touch slop
+- Nested scroll views in all fragments no longer compete as heavily with page swipes
+
+### Battery Optimization
+- Reduced unnecessary UI redraws: KOFragment and MergedFragment LiveData observers now skip rendering when fragment is not visible
+- Added proper onPause/onResume lifecycle handling in MainActivity to allow screen to dim when app is backgrounded
+- No impact on data persistence or app resume speed — all data preserved via ViewModel and backup files
+
 ## [V1.5 - 2026-04-30]
 
 ### Icon
