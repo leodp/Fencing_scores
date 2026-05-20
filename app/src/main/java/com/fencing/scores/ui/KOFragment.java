@@ -1807,107 +1807,86 @@ public class KOFragment extends Fragment {
         if (koRepechage && !losersRounds.isEmpty()) {
             return calculateRepechageRankings(participantNames, nameToFinalPos);
         }
-        
-        // Standard single-elimination rankings
-        // For fencing: no 3rd place match - losers are ranked by FinalPos within each elimination round
-        // Map: participant name -> round eliminated (0 = first round, higher = later round)
-        java.util.Map<String, Integer> nameToRoundEliminated = new java.util.HashMap<>();
-        
-        String finalWinner = null;
-        String finalLoser = null;
-        
-        // Find the actual final round (last round with exactly 1 match, excluding any third place match)
-        // The final is the first single-match round after all multi-match rounds
+        // Standard KO ranking must include all participants even when rounds are incomplete.
+        // Score model: active at round r => r*2+1, eliminated at round r => r*2.
+        // Winner of final gets highest score, final loser the next one.
+        java.util.Set<String> allParticipants = new java.util.LinkedHashSet<>();
+        for (String name : participantNames) {
+            if (name != null && !name.trim().isEmpty() && !name.equals("Empty")) {
+                allParticipants.add(name);
+            }
+        }
+
+        java.util.Map<String, Integer> progressScore = new java.util.HashMap<>();
+        for (String name : allParticipants) {
+            progressScore.put(name, 1); // Active at round 0.
+        }
+
         int finalRoundIndex = -1;
         for (int r = 0; r < koRounds.size(); r++) {
             List<Match> round = koRounds.get(r);
             if (round.size() == 1) {
-                // Check if previous round exists and has 2 matches (semifinal)
                 if (r > 0 && koRounds.get(r - 1).size() == 2) {
                     finalRoundIndex = r;
                     break;
                 } else if (r == koRounds.size() - 1 || r == koRounds.size() - 2) {
-                    // Fallback: if it's near the end and has 1 match, consider it the final
                     finalRoundIndex = r;
                     break;
                 }
             }
         }
-        
-        // Go through all rounds and track when each participant was eliminated
-        for (int r = 0; r < koRounds.size(); r++) {
+        if (finalRoundIndex < 0) {
+            finalRoundIndex = Math.max(0, koRounds.size() - 1);
+        }
+
+        int totalRounds = finalRoundIndex + 1;
+        for (int r = 0; r <= finalRoundIndex && r < koRounds.size(); r++) {
             List<Match> round = koRounds.get(r);
-            
-            // Skip third place match (any round after the final)
-            if (finalRoundIndex >= 0 && r > finalRoundIndex) continue;
-            
             boolean isFinal = (r == finalRoundIndex);
-            
+
             for (Match m : round) {
-                // Resolve p1 and p2 to actual names
                 String p1Ref = resolveKORef(m.p1, koRounds, r);
                 String p2Ref = resolveKORef(m.p2, koRounds, r);
                 String p1Name = getKOName(p1Ref, participantNames);
                 String p2Name = getKOName(p2Ref, participantNames);
-                String winner = m.winner;
-                
-                // Skip Empty participants
-                if (p1Name.equals("Empty") && p2Name.equals("Empty")) continue;
-                
-                if (winner != null && !winner.equals("Empty")) {
-                    // Determine actual loser name
-                    String loser = winner.equals(p1Name) ? p2Name : p1Name;
-                    
-                    if (isFinal) {
-                        // Track 1st/2nd place specifically
-                        finalWinner = winner;
-                        finalLoser = loser;
-                    } else {
-                        // Regular round - loser is eliminated here
-                        if (!loser.equals("Empty") && !nameToRoundEliminated.containsKey(loser)) {
-                            nameToRoundEliminated.put(loser, r);
-                        }
+
+                if ((p1Name == null || p1Name.equals("Empty")) && (p2Name == null || p2Name.equals("Empty"))) {
+                    continue;
+                }
+
+                String winner = getMatchWinner(m, participantNames, r);
+                if (winner == null || winner.equals("Empty")) {
+                    continue;
+                }
+
+                String loser = winner.equals(p1Name) ? p2Name : p1Name;
+                if (isFinal) {
+                    progressScore.put(winner, totalRounds * 2 + 1);
+                    if (loser != null && !loser.equals("Empty")) {
+                        progressScore.put(loser, totalRounds * 2);
+                    }
+                } else {
+                    progressScore.put(winner, (r + 1) * 2 + 1);
+                    if (loser != null && !loser.equals("Empty")) {
+                        progressScore.put(loser, r * 2);
                     }
                 }
             }
         }
-        
-        // Build rankings in order:
-        // 1st: Final winner
-        // 2nd: Final loser  
-        // Then: losers from each round sorted by elimination round (higher = better) and FinalPos
-        
-        if (finalWinner != null && !finalWinner.equals("Empty")) {
-            rankings.add(finalWinner);
-        }
-        if (finalLoser != null && !finalLoser.equals("Empty")) {
-            rankings.add(finalLoser);
-        }
-        
-        // Sort remaining participants: higher round eliminated = better rank
-        // Within same round: lower FinalPos (better pool position) = better final rank
-        java.util.List<java.util.Map.Entry<String, Integer>> sortedEntries = 
-            new java.util.ArrayList<>(nameToRoundEliminated.entrySet());
-        
-        sortedEntries.sort((a, b) -> {
-            int roundA = a.getValue();
-            int roundB = b.getValue();
-            if (roundA != roundB) {
-                return Integer.compare(roundB, roundA); // Higher round = better
+
+        java.util.List<String> sorted = new java.util.ArrayList<>(allParticipants);
+        sorted.sort((a, b) -> {
+            int scoreA = progressScore.getOrDefault(a, 1);
+            int scoreB = progressScore.getOrDefault(b, 1);
+            if (scoreA != scoreB) {
+                return Integer.compare(scoreB, scoreA);
             }
-            // Same round: use FinalPos from Merged (lower FinalPos = better)
-            int posA = nameToFinalPos.getOrDefault(a.getKey(), 999);
-            int posB = nameToFinalPos.getOrDefault(b.getKey(), 999);
+            int posA = nameToFinalPos.getOrDefault(a, 999);
+            int posB = nameToFinalPos.getOrDefault(b, 999);
             return Integer.compare(posA, posB);
         });
-        
-        for (java.util.Map.Entry<String, Integer> entry : sortedEntries) {
-            String name = entry.getKey();
-            if (!name.equals("Empty") && !rankings.contains(name)) {
-                rankings.add(name);
-            }
-        }
-        
+        rankings.addAll(sorted);
+
         return rankings;
     }
     
@@ -3523,6 +3502,8 @@ public class KOFragment extends Fragment {
         resetBtn.setOnClickListener(v -> {
             match.score1 = -1;
             match.score2 = -1;
+            match.winner = null;
+            propagateKOWinners();
             backupKOTree();
             renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
             if (dialogRef[0] != null) dialogRef[0].dismiss();
@@ -4530,9 +4511,11 @@ public class KOFragment extends Fragment {
     // Propagate KO winners to next round after score entry
     private void propagateKOWinners() {
         String[] participantNames = getKOParticipantNames();
+        if (participantNames == null || koRounds.isEmpty()) return;
         // Propagate up to but NOT including the Final round - Final should not propagate to Third Place
         // Third Place uses L refs from Semifinals, not winners from Final
         int finalRoundIdx = koRounds.size() - 2; // Final is second-to-last (Third Place is last)
+        if (finalRoundIdx < 0) finalRoundIdx = 0;
         for (int r = 0; r < finalRoundIdx; r++) {
             List<Match> currentRound = koRounds.get(r);
             List<Match> nextRound = koRounds.get(r + 1);
@@ -4543,6 +4526,8 @@ public class KOFragment extends Fragment {
                 // Set match.winner to the actual name for proper loser resolution later
                 if (winner != null && !winner.equals("Empty")) {
                     match.winner = winner;
+                } else {
+                    match.winner = null;
                 }
                 
                 int nextIdx = m / 2;
@@ -4553,8 +4538,21 @@ public class KOFragment extends Fragment {
                         nextMatch.p1 = winner;
                     } else if (m % 2 == 1 && !winner.equals("Empty")) {
                         nextMatch.p2 = winner;
+                    } else if (m % 2 == 0) {
+                        nextMatch.p1 = "W" + (m + 1);
+                        if (nextMatch.score1 >= 0 || nextMatch.score2 >= 0 || nextMatch.winner != null) {
+                            nextMatch.score1 = -1;
+                            nextMatch.score2 = -1;
+                            nextMatch.winner = null;
+                        }
+                    } else {
+                        nextMatch.p2 = "W" + (m + 1);
+                        if (nextMatch.score1 >= 0 || nextMatch.score2 >= 0 || nextMatch.winner != null) {
+                            nextMatch.score1 = -1;
+                            nextMatch.score2 = -1;
+                            nextMatch.winner = null;
+                        }
                     }
-                    // Do NOT touch the opponent's slot; it remains W* or the winner of the other match if already defined
                 }
             }
         }

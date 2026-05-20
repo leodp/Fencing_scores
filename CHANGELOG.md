@@ -1,5 +1,18 @@
 # Changelog
 
+## [V1.7 - 2026-05-20]
+
+### KO Page - Ranking and Reset Fixes
+- Fixed standard KO rankings to always include all participants, even when no KO matches are completed yet
+- Final page now correctly reflects initial ranking order from Merged FinalPos after KO RELOAD in standard KO mode
+- Fixed partial-match ranking issue where only eliminated participants could appear; active and unresolved participants now remain ranked using progress plus FinalPos tiebreak
+- Fixed RESET behavior in standard KO: resetting a match now clears downstream propagated winners and dependent match results correctly
+
+### Round Page - Sorting Extensions
+- Long-press on P (Pos) cells now toggles ordering between increasing and decreasing position order
+- Long-press on participant name cells now toggles full-table reordering between alphabetical (A-Z) and reverse alphabetical (Z-A)
+- Name/P reordering continues to keep bout data aligned with the reordered participants
+
 ## [V1.6 - 2026-04-30]
 
 ### Round Page

@@ -173,7 +173,7 @@ public class RoundFragment extends Fragment {
                         new android.os.Handler().postDelayed(() -> { if (dialog.isShowing()) dialog.dismiss(); }, 5000);
                     }
                 // Sort all participants and results by P ranking and reload matrix
-                private void sortByPRankingAndReload() {
+                private void sortByPRankingAndReload(boolean ascending) {
                     int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
                     String[] participantNames = scoresViewModel.getParticipantNames().getValue();
                     int[][] boutResults = scoresViewModel.getBoutResults().getValue();
@@ -244,6 +244,9 @@ public class RoundFragment extends Fragment {
                         if (cmp != 0) return cmp;
                         return 0;
                     });
+                    if (!ascending) {
+                        java.util.Collections.reverse(withBouts);
+                    }
                     // Assign positions (standard competition ranking) for withBouts
                     int[] positions = new int[nrPart];
                     int pos = 1;
@@ -260,6 +263,10 @@ public class RoundFragment extends Fragment {
                     java.util.List<Row> sortedRows = new java.util.ArrayList<>();
                     // Sort namedNoBouts by name (optional: or keep original order)
                     namedNoBouts.sort((a, b) -> a.name.compareToIgnoreCase(b.name));
+                    if (!ascending) {
+                        java.util.Collections.reverse(namedNoBouts);
+                        java.util.Collections.reverse(emptyNames);
+                    }
                     sortedRows.addAll(withBouts);
                     sortedRows.addAll(namedNoBouts);
                     sortedRows.addAll(emptyNames);
@@ -289,6 +296,88 @@ public class RoundFragment extends Fragment {
                     // Update ViewModel
                     scoresViewModel.setParticipantNames(sortedNames);
                     scoresViewModel.setBoutResults(sortedBouts);
+                }
+
+                private boolean sameNameOrder(String[] a, String[] b, int nrPart) {
+                    if (a == null || b == null) return false;
+                    if (a.length < nrPart || b.length < nrPart) return false;
+                    for (int i = 0; i < nrPart; i++) {
+                        String av = a[i] == null ? "" : a[i];
+                        String bv = b[i] == null ? "" : b[i];
+                        if (!av.equals(bv)) return false;
+                    }
+                    return true;
+                }
+
+                private boolean togglePosSortAndReload() {
+                    int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+                    String[] before = scoresViewModel.getParticipantNames().getValue();
+                    if (before == null || before.length < nrPart) return true;
+                    String[] beforeCopy = before.clone();
+
+                    sortByPRankingAndReload(true);
+                    String[] afterAsc = scoresViewModel.getParticipantNames().getValue();
+                    boolean changed = !sameNameOrder(beforeCopy, afterAsc, nrPart);
+                    if (!changed) {
+                        sortByPRankingAndReload(false);
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Sort participants (and all bout data) by participant name.
+                private void sortByNameAndReload(boolean ascending) {
+                    int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+                    String[] participantNames = scoresViewModel.getParticipantNames().getValue();
+                    int[][] boutResults = scoresViewModel.getBoutResults().getValue();
+                    if (participantNames == null || boutResults == null || participantNames.length != nrPart || boutResults.length != nrPart) return;
+
+                    java.util.List<Integer> nonEmpty = new java.util.ArrayList<>();
+                    java.util.List<Integer> empty = new java.util.ArrayList<>();
+                    for (int i = 0; i < nrPart; i++) {
+                        String name = participantNames[i] != null ? participantNames[i].trim() : "";
+                        if (name.isEmpty()) empty.add(i);
+                        else nonEmpty.add(i);
+                    }
+
+                    nonEmpty.sort((a, b) -> participantNames[a].compareToIgnoreCase(participantNames[b]));
+                    if (!ascending) {
+                        java.util.Collections.reverse(nonEmpty);
+                    }
+
+                    java.util.List<Integer> order = new java.util.ArrayList<>(nrPart);
+                    order.addAll(nonEmpty);
+                    order.addAll(empty);
+
+                    String[] sortedNames = new String[nrPart];
+                    int[][] sortedBouts = new int[nrPart][nrPart];
+                    for (int i = 0; i < nrPart; i++) {
+                        int srcI = order.get(i);
+                        sortedNames[i] = participantNames[srcI];
+                        for (int j = 0; j < nrPart; j++) {
+                            int srcJ = order.get(j);
+                            sortedBouts[i][j] = boutResults[srcI][srcJ];
+                        }
+                    }
+
+                    scoresViewModel.setParticipantNames(sortedNames);
+                    scoresViewModel.setBoutResults(sortedBouts);
+                }
+
+                private boolean toggleNameSortAndReload() {
+                    int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+                    String[] before = scoresViewModel.getParticipantNames().getValue();
+                    if (before == null || before.length < nrPart) return true;
+                    String[] beforeCopy = before.clone();
+
+                    sortByNameAndReload(true);
+                    String[] afterAsc = scoresViewModel.getParticipantNames().getValue();
+                    boolean changed = !sameNameOrder(beforeCopy, afterAsc, nrPart);
+                    if (!changed) {
+                        sortByNameAndReload(false);
+                        return false;
+                    }
+                    return true;
                 }
             // Reference to help dialog for file picker result
             private android.app.AlertDialog helpDialog = null;
@@ -470,6 +559,7 @@ public class RoundFragment extends Fragment {
         if (participantNames == null || participantNames.length != nrPart || boutResults == null || boutResults.length != nrPart) {
             return;
         }
+        boolean highlightRemainingBouts = shouldHighlightRemainingBouts(participantNames, boutResults, nrPart);
         // Calculate dynamic cell height to fill screen
         android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
         int screenHeight = metrics.heightPixels;
@@ -483,7 +573,7 @@ public class RoundFragment extends Fragment {
         for (int i = 0; i < nrPart; i++) {
             participantNames = scoresViewModel.getParticipantNames().getValue();
             boutResults = scoresViewModel.getBoutResults().getValue();
-            TableRow row = createParticipantRow(i, tableLayout, participantNames, boutResults, nrPart, colorIdx, cellHeight);
+            TableRow row = createParticipantRow(i, tableLayout, participantNames, boutResults, nrPart, colorIdx, cellHeight, highlightRemainingBouts);
             tableLayout.addView(row);
             if (participantNames == null || participantNames[i] == null || participantNames[i].isEmpty()) {
                 lastEmptyP = i;
@@ -499,6 +589,35 @@ public class RoundFragment extends Fragment {
             }
         }
         // Help text logic will be refactored into a reusable method below
+    }
+
+    // When the remaining unplayed valid bouts are <= 15%, highlight those missing bouts.
+    private boolean shouldHighlightRemainingBouts(String[] participantNames, int[][] boutResults, int nrPart) {
+        int totalValidBouts = 0;
+        int missingBouts = 0;
+        for (int i = 0; i < nrPart; i++) {
+            String nameI = (participantNames != null && i < participantNames.length && participantNames[i] != null)
+                ? participantNames[i].trim() : "";
+            if (nameI.isEmpty()) continue;
+            for (int j = i + 1; j < nrPart; j++) {
+                String nameJ = (participantNames != null && j < participantNames.length && participantNames[j] != null)
+                    ? participantNames[j].trim() : "";
+                if (nameJ.isEmpty()) continue;
+                totalValidBouts++;
+                boolean hasIJ = boutResults != null
+                    && i < boutResults.length && boutResults[i] != null && j < boutResults[i].length
+                    && boutResults[i][j] >= 0;
+                boolean hasJI = boutResults != null
+                    && j < boutResults.length && boutResults[j] != null && i < boutResults[j].length
+                    && boutResults[j][i] >= 0;
+                if (!(hasIJ && hasJI)) {
+                    missingBouts++;
+                }
+            }
+        }
+        if (totalValidBouts == 0 || missingBouts == 0) return false;
+        double remainingPercent = (missingBouts * 100.0) / totalValidBouts;
+        return remainingPercent <= 15.0;
     }
 
     private TableRow createHeaderRow(int nrPart) {
@@ -543,11 +662,12 @@ public class RoundFragment extends Fragment {
                 cell.setBackground(makeBorderedCell(pair[1]));
                 // Add long click to sort by P ranking and update matrix
                 cell.setOnLongClickListener(v -> {
-                    sortByPRankingAndReload();
+                    boolean appliedAscending = togglePosSortAndReload();
                     // Save backup after sorting to persist new order
                     saveBackupToDocuments();
                     // Update the matrix after sorting
                     createMatrix(getView());
+                    android.widget.Toast.makeText(getContext(), appliedAscending ? "Pos order: increasing" : "Pos order: decreasing", android.widget.Toast.LENGTH_SHORT).show();
                     return true;
                 });
             }
@@ -566,15 +686,20 @@ public class RoundFragment extends Fragment {
 
 
     private TableRow createParticipantRow(final int participantIndex, TableLayout tableLayout, String[] participantNames, int[][] boutResults, int nrPart) {
-        return createParticipantRow(participantIndex, tableLayout, participantNames, boutResults, nrPart, 0);
+        return createParticipantRow(participantIndex, tableLayout, participantNames, boutResults, nrPart, 0, -1, false);
     }
 
     private TableRow createParticipantRow(final int participantIndex, TableLayout tableLayout, String[] participantNames, int[][] boutResults, int nrPart, int colorIdx) {
-        return createParticipantRow(participantIndex, tableLayout, participantNames, boutResults, nrPart, colorIdx, -1);
+        return createParticipantRow(participantIndex, tableLayout, participantNames, boutResults, nrPart, colorIdx, -1, false);
     }
 
     // Overload with cellHeight
     private TableRow createParticipantRow(final int participantIndex, TableLayout tableLayout, String[] participantNames, int[][] boutResults, int nrPart, int colorIdx, int cellHeight) {
+        return createParticipantRow(participantIndex, tableLayout, participantNames, boutResults, nrPart, colorIdx, cellHeight, false);
+    }
+
+    // Overload with cellHeight and remaining-bouts highlight flag
+    private TableRow createParticipantRow(final int participantIndex, TableLayout tableLayout, String[] participantNames, int[][] boutResults, int nrPart, int colorIdx, int cellHeight, boolean highlightRemainingBouts) {
                 // Defensive: if arrays are not yet resized, return a placeholder row to avoid crash
                 if ((participantNames == null || participantNames.length <= participantIndex) || (boutResults == null || boutResults.length <= participantIndex)) {
                     TableRow row = new TableRow(getContext());
@@ -650,6 +775,13 @@ public class RoundFragment extends Fragment {
         TextView nameCell = createDataCell(safeName, true, cellHeight, nrPart);
         nameCell.setBackground(makeBorderedCell(0xFFA0A0A0));
         nameCell.setOnClickListener(v -> showNameEditDialog(participantIndex, nameCell));
+        nameCell.setOnLongClickListener(v -> {
+            boolean appliedAscending = toggleNameSortAndReload();
+            saveBackupToDocuments();
+            createMatrix(getView());
+            android.widget.Toast.makeText(getContext(), appliedAscending ? "Name order: A-Z" : "Name order: Z-A", android.widget.Toast.LENGTH_SHORT).show();
+            return true;
+        });
         row.addView(nameCell);
 
         // Calculate results for this participant
@@ -706,6 +838,10 @@ public class RoundFragment extends Fragment {
                     if (rowNum % 5 == 0 || colNum % 5 == 0) {
                         boutBgColor = mixWithWhite(currentPair[0]);
                     }
+                }
+                // If valid bouts are almost finished (<=15% missing), mark still-missing valid bouts in gray.
+                if (highlightRemainingBouts && nameValid && !(score >= 0 && oppScore >= 0)) {
+                    boutBgColor = 0xFF909090;
                 }
                 boutCell.setBackground(makeBorderedCell(boutBgColor));
                 // Defensive: prevent crash if either participant has empty or null name or out of bounds
@@ -871,10 +1007,11 @@ public class RoundFragment extends Fragment {
         });
         // Add long-press to sort by P ranking (same as P header)
         pCell.setOnLongClickListener(v -> {
-            sortByPRankingAndReload();
+            boolean appliedAscending = togglePosSortAndReload();
             // Save backup after sorting to persist new order
             saveBackupToDocuments();
             createMatrix(getView());
+            android.widget.Toast.makeText(getContext(), appliedAscending ? "Pos order: increasing" : "Pos order: decreasing", android.widget.Toast.LENGTH_SHORT).show();
             return true;
         });
         row.addView(pCell);

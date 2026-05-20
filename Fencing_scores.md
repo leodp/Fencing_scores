@@ -4,7 +4,7 @@
 Android app for managing complete fencing tournaments: pool rounds, merged rankings, knockout brackets, and final results.
 
 **License:** GNU General Public License V3.0  
-**Version:** 1.6  
+**Version:** 1.7  
 **Target:** Android 11+ (API 30+, target API 34)  
 **App Name:** "Fence!"  
 **APK Filename:** `Fence.apk` (project root — ready to install)  
