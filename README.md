@@ -21,14 +21,12 @@ A comprehensive Android application for managing fencing tournament scores, from
 - Bout order suggestions
 - Help dialog with LOAD, RESTORE, SAVE, QR OUT, QR IN, QUIT buttons
 - Color-coded result columns (cycling themes)
-- Landscape orientation
 
 ### Merged (Rankings Combination)
 - Combine results from multiple pools
 - Split table view (left/right rankings)
 - Buttons: RELOAD round, REPLACE, ADD, RESTORE crash, QR OUT, QR ADD, SAVE
 - Editable fields with automatic re-ranking
-- Portrait orientation
 
 ### KO (Knockout Phase)
 - Visual bracket display with boxes for each match
@@ -46,14 +44,12 @@ A comprehensive Android application for managing fencing tournament scores, from
 - Buttons: RELOAD, REPLACE, RESTORE CRASH, QR OUT, QR IN, SAVE
 - Support for 8, 16, 32, 64 participant brackets (auto-padded with Empty)
 - Color themes synced with Round page
-- Portrait orientation
 
 ### Final (Results)
 - 3-column final rankings display
 - Filters empty/placeholder entries
 - SAVE button for CSV export
 - Long-press to return to Round page
-- Portrait orientation
 
 ## Project Structure
 
@@ -152,7 +148,6 @@ Participants are ranked by:
 
 - **KO Box Height**: 32dp per match box
 - **Button Corners**: 8dp rounded corners
-- **Orientation**: Round=Landscape, Others=Portrait
 - **Full screen**: No action bar
 
 ## License
@@ -165,4 +160,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V1.7** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V1.8** — See [CHANGELOG.md](CHANGELOG.md) for full history.

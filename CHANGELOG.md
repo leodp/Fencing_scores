@@ -1,5 +1,25 @@
 # Changelog
 
+## [V1.8 - 2026-05-20]
+
+### Multi-Rounds (1..5)
+- Added dynamic multi-round architecture: pages are now `Rounds1..RoundsN`, then `Merged`, `KO`, `Final`
+- Added long-press action on the Round name header to configure round count with a `1..5` popup (`1` highlighted, `CANCEL` action)
+- Round pages now carry their own round code and label (`nR. Name:`)
+- Round backups are now round-scoped (`Fencing_backup.csv` for R1, `Fencing_backup_Rn.csv` for R2..R5)
+
+### Data Synchronization and Navigation
+- Added ViewModel support for per-round bout matrices and per-round color-cycle state
+- Added dynamic page-index navigation helpers in MainActivity and updated fragments to use them
+- Sorting by P and sorting by Name now reorder participants consistently across all configured rounds
+
+### Merged Page
+- `RELOAD round` now aggregates ranking stats across all enabled rounds (by participant name), then recalculates P and FinalPos
+
+### Round Page
+- Updated late-missing-bout highlight color to `#B0B0B0`
+- Round CSV default filename now includes round code before date (e.g. `BoutRounds_1R_YYYYMMDD_HH.mm.ss.csv`)
+
 ## [V1.7 - 2026-05-20]
 
 ### KO Page - Ranking and Reset Fixes

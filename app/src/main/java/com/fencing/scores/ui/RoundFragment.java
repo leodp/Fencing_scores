@@ -55,6 +55,8 @@ import com.journeyapps.barcodescanner.ScanOptions;
 import com.journeyapps.barcodescanner.ScanContract;
 
 public class RoundFragment extends Fragment {
+    private static final String ARG_ROUND_CODE = "round_code";
+    private int roundCode = 1;
                             // Flag to suspend UI/observers during atomic participant count changes
                             private boolean suspendObservers = false;
                         // Update Help text in the last P data cell
@@ -293,9 +295,11 @@ public class RoundFragment extends Fragment {
                             }
                         }
                     }
-                    // Update ViewModel
-                    scoresViewModel.setParticipantNames(sortedNames);
-                    scoresViewModel.setBoutResults(sortedBouts);
+                    int[] newToOld = new int[nrPart];
+                    for (int i = 0; i < nrPart; i++) {
+                        newToOld[i] = (i < sortedRows.size()) ? sortedRows.get(i).idx : i;
+                    }
+                    scoresViewModel.reorderAllRounds(newToOld, sortedNames);
                 }
 
                 private boolean sameNameOrder(String[] a, String[] b, int nrPart) {
@@ -360,8 +364,11 @@ public class RoundFragment extends Fragment {
                         }
                     }
 
-                    scoresViewModel.setParticipantNames(sortedNames);
-                    scoresViewModel.setBoutResults(sortedBouts);
+                    int[] newToOld = new int[nrPart];
+                    for (int i = 0; i < nrPart; i++) {
+                        newToOld[i] = order.get(i);
+                    }
+                    scoresViewModel.reorderAllRounds(newToOld, sortedNames);
                 }
 
                 private boolean toggleNameSortAndReload() {
@@ -388,7 +395,7 @@ public class RoundFragment extends Fragment {
     // Color pairs for result columns (cycled)
     private static final int[][] RESULT_COLOR_PAIRS = {
         {0xFFFFD700, 0xFFFF7F50}, // Default
-        {0xFF87CEFA, 0xFFB0C4DE},
+        {0xFF87DEFA, 0xFF9084DE},
         {0xFFFFFFE0, 0xFFF0E68C},
         {0xFF98FB98, 0xFF9ACD32},
         {0xFFA9A9A9, 0xFFDCDCDC},
@@ -396,6 +403,23 @@ public class RoundFragment extends Fragment {
     };
     private static final int NR_BG_COLOR = 0xFFF5F5F5;
     private ScoresViewModel scoresViewModel;
+
+    public static RoundFragment newInstance(int roundCode) {
+        RoundFragment f = new RoundFragment();
+        Bundle args = new Bundle();
+        args.putInt(ARG_ROUND_CODE, roundCode);
+        f.setArguments(args);
+        return f;
+    }
+
+    private String getRoundLabelPrefix() {
+        return roundCode + "R";
+    }
+
+    private String getRoundBackupFilename() {
+        if (roundCode <= 1) return "Fencing_backup.csv";
+        return "Fencing_backup_R" + roundCode + ".csv";
+    }
     
     // QR Scanner launcher for Round data
     private final ActivityResultLauncher<ScanOptions> qrScannerLauncher = 
@@ -426,6 +450,15 @@ public class RoundFragment extends Fragment {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            roundCode = getArguments().getInt(ARG_ROUND_CODE, 1);
+        }
+        if (roundCode < 1) roundCode = 1;
+    }
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -434,10 +467,14 @@ public class RoundFragment extends Fragment {
 
     // Helper: navigate to next page in a loop (example: to MergedActivity)
     private void navigateToNextPage() {
-        // Navigate to MergedFragment using MainActivity.navigateToPage
         if (getActivity() instanceof com.fencing.scores.MainActivity) {
             com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
-            mainActivity.navigateToPage(1); // 1 = MergedFragment
+            int rounds = mainActivity.getRoundPagesCount();
+            if (roundCode < rounds) {
+                mainActivity.navigateToRoundPage(roundCode + 1);
+            } else {
+                mainActivity.navigateToMergedPage();
+            }
         }
     }
     
@@ -445,7 +482,11 @@ public class RoundFragment extends Fragment {
     private void navigateToPreviousPage() {
         if (getActivity() instanceof com.fencing.scores.MainActivity) {
             com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
-            mainActivity.navigateToPage(3); // 3 = FinalFragment
+            if (roundCode > 1) {
+                mainActivity.navigateToRoundPage(roundCode - 1);
+            } else {
+                mainActivity.navigateToFinalPage();
+            }
         }
     }
 
@@ -486,6 +527,7 @@ public class RoundFragment extends Fragment {
                 );
         super.onViewCreated(view, savedInstanceState);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
+        scoresViewModel.switchToRound(roundCode);
         // Only restore automatically if crash detected
         // On normal start, try to restore from backup if it exists (to preserve names/bouts)
         android.util.Log.d("RoundFragment", "onViewCreated: crashDetected=" + com.fencing.scores.MainActivity.crashDetected);
@@ -493,14 +535,17 @@ public class RoundFragment extends Fragment {
             android.util.Log.d("RoundFragment", "Restoring from backup due to crash");
             restoreFromDefaultBackupCompat();
         } else {
-            // On normal start, try backup first, then reset to default if no backup
-            java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), "Fencing_backup.csv");
-            if (backupFile.exists() && backupFile.length() > 0) {
-                android.util.Log.d("RoundFragment", "Normal start - restoring from backup");
-                restoreFromDefaultBackupCompat();
+            // On normal start, avoid restoring stale backup data for newly created Round2+ pages.
+            if (roundCode == 1) {
+                java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), getRoundBackupFilename());
+                if (backupFile.exists() && backupFile.length() > 0) {
+                    android.util.Log.d("RoundFragment", "Normal start - restoring backup for Round1");
+                    restoreFromDefaultBackupCompat();
+                } else {
+                    android.util.Log.d("RoundFragment", "Normal start - no Round1 backup, using in-memory state");
+                }
             } else {
-                android.util.Log.d("RoundFragment", "Normal start - no backup, resetting to default");
-                scoresViewModel.resetToDefault();
+                android.util.Log.d("RoundFragment", "Normal start - Round" + roundCode + " uses in-memory state only");
             }
         }
         // Observe changes and update matrix (only when this fragment is visible/resumed)
@@ -540,6 +585,27 @@ public class RoundFragment extends Fragment {
         updateHelpTextInLastPCell((TableLayout) view.findViewById(R.id.tableLayout),
             scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
             findLastEmptyP());
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (scoresViewModel != null) {
+            scoresViewModel.switchToRound(roundCode);
+        }
+        View root = getView();
+        if (root != null) {
+            createMatrix(root);
+        }
+    }
+
+    @Override
+    public void onPause() {
+        saveBackupToDocuments();
+        if (scoresViewModel != null) {
+            scoresViewModel.persistActiveRoundData();
+        }
+        super.onPause();
     }
 
     private void cycleResultColors() {
@@ -636,7 +702,7 @@ public class RoundFragment extends Fragment {
             cellHeight > 0 ? cellHeight : TableLayout.LayoutParams.WRAP_CONTENT));
         String[] headers = new String[nrPart + 8];
         headers[0] = "Nr";
-        headers[1] = "Name";
+        headers[1] = getRoundLabelPrefix() + ". Name:";
         for (int i = 0; i < nrPart; i++) {
             headers[i + 2] = String.valueOf(i + 1);
         }
@@ -652,6 +718,14 @@ public class RoundFragment extends Fragment {
             // Set #A0A0A0 for Nr header, Names header, and bout results headers
             if (i == 0 || i == 1 || (i >= 2 && i < nrPart + 2)) {
                 cell.setBackground(makeBorderedCell(0xFFA0A0A0));
+                if (i == 1) {
+                    cell.setClickable(true);
+                    cell.setLongClickable(true);
+                    cell.setOnLongClickListener(v -> {
+                        showRoundsCountDialog();
+                        return true;
+                    });
+                }
             } else if (i >= nrPart + 2 && i <= nrPart + 6) {
                 cell.setBackground(makeBorderedCell(pair[0])); // C, →, ←, I, %
                 cell.setOnClickListener(v -> {
@@ -672,12 +746,93 @@ public class RoundFragment extends Fragment {
                 });
             }
             // Add QR code generation on header click (was CSV export)
-                if (i != nrPart + 7) { // Do not set short click for P header
+                if (i != nrPart + 7 && i != 1) { // Do not override Name header click/long-click behavior
                     cell.setOnClickListener(v -> generateAndShowRoundQrCode());
                 }
             row.addView(cell);
         }
         return row;
+    }
+
+    private void showRoundsCountDialog() {
+        if (getContext() == null || scoresViewModel == null) return;
+
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
+        builder.setTitle("Rounds Nr. in the pool");
+
+        android.widget.LinearLayout root = new android.widget.LinearLayout(getContext());
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        root.setPadding(32, 24, 32, 24);
+
+        android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
+        grid.setColumnCount(3);
+
+        final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        for (int i = 1; i <= ScoresViewModel.MAX_ROUNDS; i++) {
+            final int rounds = i;
+            android.widget.Button btn = new android.widget.Button(getContext());
+            btn.setText(String.valueOf(i));
+            if (i == 1) {
+                btn.setBackgroundColor(0xFF2E7D32);
+                btn.setTextColor(android.graphics.Color.WHITE);
+            }
+            android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams();
+            lp.setMargins(8, 8, 8, 8);
+            btn.setLayoutParams(lp);
+            btn.setOnClickListener(v -> {
+                int oldRounds = scoresViewModel.getNrRounds().getValue() != null ? scoresViewModel.getNrRounds().getValue() : 1;
+                cleanupRoundBackupsAfterRoundCountChange(oldRounds, rounds);
+                scoresViewModel.setNrRounds(rounds);
+                if (roundCode > rounds && getActivity() instanceof com.fencing.scores.MainActivity) {
+                    ((com.fencing.scores.MainActivity) getActivity()).navigateToRoundPage(rounds);
+                }
+                if (dialogRef[0] != null) dialogRef[0].dismiss();
+            });
+            grid.addView(btn);
+        }
+
+        android.widget.Button cancelBtn = new android.widget.Button(getContext());
+        cancelBtn.setText("CANCEL");
+        cancelBtn.setBackgroundColor(0xFFD32F2F);
+        cancelBtn.setTextColor(android.graphics.Color.WHITE);
+        cancelBtn.setOnClickListener(v -> {
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+        });
+
+        root.addView(grid);
+        root.addView(cancelBtn);
+        builder.setView(root);
+
+        android.app.AlertDialog dialog = builder.create();
+        dialogRef[0] = dialog;
+        dialog.show();
+    }
+
+    private void cleanupRoundBackupsAfterRoundCountChange(int oldRounds, int newRounds) {
+        android.content.Context ctx = getContext();
+        if (ctx == null || oldRounds == newRounds) return;
+        java.io.File filesDir = ctx.getFilesDir();
+        if (filesDir == null) return;
+
+        if (newRounds > oldRounds) {
+            // Ignore stale crash backups for newly created rounds until user populates them.
+            for (int r = oldRounds + 1; r <= newRounds; r++) {
+                java.io.File f = new java.io.File(filesDir, "Fencing_backup_R" + r + ".csv");
+                if (f.exists()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                }
+            }
+            return;
+        }
+
+        for (int r = newRounds + 1; r <= ScoresViewModel.MAX_ROUNDS; r++) {
+            java.io.File f = new java.io.File(filesDir, "Fencing_backup_R" + r + ".csv");
+            if (f.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
     }
     // Save CSV with file picker, default Documents folder, default name Results.csv
     private void saveCsvDirectToDocumentsAuto() {
@@ -841,7 +996,7 @@ public class RoundFragment extends Fragment {
                 }
                 // If valid bouts are almost finished (<=15% missing), mark still-missing valid bouts in gray.
                 if (highlightRemainingBouts && nameValid && !(score >= 0 && oppScore >= 0)) {
-                    boutBgColor = 0xFF909090;
+                    boutBgColor = 0xFFB0B0B0;
                 }
                 boutCell.setBackground(makeBorderedCell(boutBgColor));
                 // Defensive: prevent crash if either participant has empty or null name or out of bounds
@@ -1053,11 +1208,11 @@ public class RoundFragment extends Fragment {
         button.setBackground(drawable);
     }
 
-    // Generate timestamped filename: prefix_YYYYMMDD_hh.mm.ss.csv
+    // Generate timestamped filename: prefix_roundCode_YYYYMMDD_hh.mm.ss.csv
     private String generateTimestampedFilename(String prefix) {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HH.mm.ss", java.util.Locale.US);
         String timestamp = sdf.format(new java.util.Date());
-        return prefix + "_" + timestamp + ".csv";
+        return prefix + "_" + getRoundLabelPrefix() + "_" + timestamp + ".csv";
     }
 
     // Show the help dialog window
@@ -1225,7 +1380,13 @@ public class RoundFragment extends Fragment {
             // Delete all backup files to ensure clean start
             try {
                 java.io.File filesDir = requireContext().getFilesDir();
-                String[] backupFiles = {"Fencing_backup.csv", "Merged_backup.csv", "KO_backup.csv"};
+                java.util.List<String> backupFiles = new java.util.ArrayList<>();
+                backupFiles.add("Fencing_backup.csv");
+                for (int r = 2; r <= ScoresViewModel.MAX_ROUNDS; r++) {
+                    backupFiles.add("Fencing_backup_R" + r + ".csv");
+                }
+                backupFiles.add("Merged_backup.csv");
+                backupFiles.add("KO_backup.csv");
                 for (String backupName : backupFiles) {
                     java.io.File f = new java.io.File(filesDir, backupName);
                     if (f.exists()) {
@@ -1534,17 +1695,24 @@ public class RoundFragment extends Fragment {
         saveBackupToDocuments();
     }
 
-    // Save backup to Fencing_backup.csv in Documents
+    // Save round backup to app private files.
     private void saveBackupToDocuments() {
         try {
             android.content.Context ctx = getContext();
             if (ctx == null) return;
             String csv = generateCSVCompat();
             java.io.File filesDir = ctx.getFilesDir();
-            java.io.File outFile = new java.io.File(filesDir, "Fencing_backup.csv");
+            java.io.File outFile = new java.io.File(filesDir, getRoundBackupFilename());
             java.io.FileOutputStream out = new java.io.FileOutputStream(outFile);
             out.write(csv.getBytes());
             out.close();
+            // Keep legacy filename for round 1 to preserve compatibility with older imports.
+            if (roundCode == 1) {
+                java.io.File legacy = new java.io.File(filesDir, "Fencing_backup.csv");
+                java.io.FileOutputStream outLegacy = new java.io.FileOutputStream(legacy);
+                outLegacy.write(csv.getBytes());
+                outLegacy.close();
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -1728,11 +1896,14 @@ public class RoundFragment extends Fragment {
 
     // Restore from default backup (stub)
     private void restoreFromDefaultBackupCompat() {
-        // Restore from Fencing_backup.csv in app private files folder
+        // Restore current round from app private files folder.
         try {
             android.content.Context ctx = getContext();
             if (ctx != null) {
-                java.io.File backupFile = new java.io.File(ctx.getFilesDir(), "Fencing_backup.csv");
+                java.io.File backupFile = new java.io.File(ctx.getFilesDir(), getRoundBackupFilename());
+                if (!backupFile.exists() && roundCode == 1) {
+                    backupFile = new java.io.File(ctx.getFilesDir(), "Fencing_backup.csv");
+                }
                 if (backupFile.exists()) {
                     java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
                     StringBuilder sb = new StringBuilder();
@@ -1783,13 +1954,87 @@ public class RoundFragment extends Fragment {
                 }
             }
         }
-        // Update ViewModel atomically
+        applyImportedRoundData(participantNames, boutResults, nrPart);
+    }
+
+    private java.util.List<String> collectNonEmptyUnique(String[] names, int limit) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (names == null) return out;
+        int n = Math.min(limit, names.length);
+        for (int i = 0; i < n; i++) {
+            String v = names[i] != null ? names[i].trim() : "";
+            if (!v.isEmpty() && !out.contains(v)) out.add(v);
+        }
+        return out;
+    }
+
+    private int[][] remapByName(String[] srcNames, int[][] srcMatrix, String[] dstNames, int dstSize) {
+        int[][] out = new int[dstSize][dstSize];
+        for (int i = 0; i < dstSize; i++) {
+            for (int j = 0; j < dstSize; j++) out[i][j] = -1;
+        }
+        if (srcNames == null || srcMatrix == null || dstNames == null) return out;
+
+        java.util.Map<String, Integer> srcIndex = new java.util.HashMap<>();
+        for (int i = 0; i < srcNames.length; i++) {
+            String n = srcNames[i] != null ? srcNames[i].trim() : "";
+            if (!n.isEmpty() && !srcIndex.containsKey(n)) srcIndex.put(n, i);
+        }
+
+        for (int i = 0; i < dstSize; i++) {
+            String ni = dstNames[i] != null ? dstNames[i].trim() : "";
+            if (ni.isEmpty()) continue;
+            Integer si = srcIndex.get(ni);
+            if (si == null || si < 0 || si >= srcMatrix.length || srcMatrix[si] == null) continue;
+            for (int j = 0; j < dstSize; j++) {
+                String nj = dstNames[j] != null ? dstNames[j].trim() : "";
+                if (nj.isEmpty()) continue;
+                Integer sj = srcIndex.get(nj);
+                if (sj == null || sj < 0 || sj >= srcMatrix[si].length) continue;
+                out[i][j] = srcMatrix[si][sj];
+            }
+        }
+        return out;
+    }
+
+    private void applyImportedRoundData(String[] loadedNames, int[][] loadedMatrix, int loadedNrPart) {
+        if (scoresViewModel == null) return;
+
+        int currentNrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+        String[] currentNames = scoresViewModel.getParticipantNames().getValue();
+
+        java.util.List<String> existingOrdered = collectNonEmptyUnique(currentNames, currentNrPart);
+        java.util.List<String> loadedOrdered = collectNonEmptyUnique(loadedNames, loadedNrPart);
+
+        java.util.List<String> mergedOrder = new java.util.ArrayList<>();
+        if (existingOrdered.isEmpty()) mergedOrder.addAll(loadedOrdered);
+        else mergedOrder.addAll(existingOrdered);
+
+        for (String name : loadedOrdered) {
+            if (!mergedOrder.contains(name)) mergedOrder.add(name);
+        }
+
+        int targetNrPart;
+        if (existingOrdered.isEmpty()) {
+            targetNrPart = Math.max(ScoresViewModel.MIN_PARTICIPANTS, loadedNrPart);
+        } else {
+            targetNrPart = Math.max(currentNrPart, mergedOrder.size());
+        }
+        if (targetNrPart > ScoresViewModel.MAX_PARTICIPANTS) targetNrPart = ScoresViewModel.MAX_PARTICIPANTS;
+
+        String[] finalNames = new String[targetNrPart];
+        for (int i = 0; i < targetNrPart; i++) {
+            finalNames[i] = i < mergedOrder.size() ? mergedOrder.get(i) : "";
+        }
+
+        int[][] remapped = remapByName(loadedNames, loadedMatrix, finalNames, targetNrPart);
+
         suspendObservers = true;
-        scoresViewModel.setNrPart(nrPart);
-        scoresViewModel.setParticipantNames(participantNames);
-        scoresViewModel.setBoutResults(boutResults);
+        scoresViewModel.setNrPart(targetNrPart);
+        scoresViewModel.setParticipantNames(finalNames);
+        scoresViewModel.setBoutResults(remapped);
         suspendObservers = false;
-        // Refresh matrix UI
+
         View root = getView();
         if (root != null) {
             createMatrix(root);
@@ -2097,20 +2342,7 @@ public class RoundFragment extends Fragment {
                 }
             }
             
-            // Update ViewModel atomically
-            suspendObservers = true;
-            scoresViewModel.setNrPart(nrPart);
-            scoresViewModel.setParticipantNames(participantNames);
-            scoresViewModel.setBoutResults(boutResults);
-            suspendObservers = false;
-            
-            // Refresh matrix UI
-            View root = getView();
-            if (root != null) {
-                createMatrix(root);
-                updateHelpTextInLastPCell((TableLayout) root.findViewById(R.id.tableLayout),
-                    nrPart, findLastEmptyP());
-            }
+            applyImportedRoundData(participantNames, boutResults, nrPart);
             
             saveBackupToDocuments();
             android.widget.Toast.makeText(getContext(), "Round data imported from QR", android.widget.Toast.LENGTH_SHORT).show();

@@ -205,8 +205,9 @@ public class MergedFragment extends Fragment {
                     private void navigateToPreviousPage() {
         if (getActivity() instanceof com.fencing.scores.MainActivity) {
             com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
-            android.util.Log.i("MergedFragment", "Navigating to Round page (index 0)");
-            mainActivity.navigateToPage(0);
+            int rounds = mainActivity.getRoundPagesCount();
+            android.util.Log.i("MergedFragment", "Navigating to last Round page (index " + (rounds - 1) + ")");
+            mainActivity.navigateToRoundPage(rounds);
         } else if (getActivity() instanceof com.fencing.scores.MergedActivity) {
             android.util.Log.i("MergedFragment", "MergedFragment is attached to MergedActivity. Navigation to Round page is not supported in this context.");
             android.widget.Toast.makeText(getContext(), "Navigation to Round page is only available in MainActivity.", android.widget.Toast.LENGTH_SHORT).show();
@@ -219,8 +220,8 @@ public class MergedFragment extends Fragment {
                     android.util.Log.d("MergedFragment", "navigateToNextPage: Attempting navigation from Merged to KO");
                     if (getActivity() instanceof com.fencing.scores.MainActivity) {
                         com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
-                        android.util.Log.i("MergedFragment", "navigateToNextPage: Navigating to KO page (index 2)");
-                        mainActivity.navigateToPage(2);
+                        android.util.Log.i("MergedFragment", "navigateToNextPage: Navigating to KO page");
+                        mainActivity.navigateToKOPage();
                     } else {
                         android.util.Log.e("MergedFragment", "navigateToNextPage: Activity is not MainActivity, cannot navigate to KO page. Actual activity: " + (getActivity() != null ? getActivity().getClass().getName() : "null"));
                     }
@@ -228,7 +229,7 @@ public class MergedFragment extends Fragment {
             // Color pairs for result columns (cycled, copied from RoundFragment)
             private static final int[][] RESULT_COLOR_PAIRS = {
                 {0xFFFFD700, 0xFFFF7F50}, // Default
-                {0xFF87CEFA, 0xFFB0C4DE},
+                {0xFF87DEFA, 0xFF9084DE},
                 {0xFFFFFFE0, 0xFFF0E68C},
                 {0xFF98FB98, 0xFF9ACD32},
                 {0xFFA9A9A9, 0xFFDCDCDC},
@@ -791,107 +792,92 @@ public class MergedFragment extends Fragment {
     }
 
     private void loadRoundData() {
-        android.util.Log.v("MergedFragment", "loadRoundData() called - loading from Fencing_backup.csv");
-        
-        // Load from RoundFragment's backup file to get original round data
-        java.io.File filesDir = requireContext().getFilesDir();
-        java.io.File roundBackupFile = new java.io.File(filesDir, "Fencing_backup.csv");
-        
-        if (!roundBackupFile.exists()) {
-            android.util.Log.w("MergedFragment", "Fencing_backup.csv not found, cannot reload round data");
-            android.widget.Toast.makeText(getContext(), "No Round data backup found", android.widget.Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
+        android.util.Log.v("MergedFragment", "loadRoundData() called - aggregating all rounds from ViewModel");
+
         try {
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(roundBackupFile));
-            String headerLine = reader.readLine();
-            if (headerLine == null) {
-                reader.close();
+            ScoresViewModel vm = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
+            vm.persistActiveRoundData();
+
+            int rounds = vm.getNrRounds().getValue() != null ? vm.getNrRounds().getValue() : 1;
+            int nrPart = vm.getNrPart().getValue() != null ? vm.getNrPart().getValue() : 0;
+            String[] participantNames = vm.getParticipantNames().getValue();
+            if (participantNames == null || nrPart <= 0) {
+                android.widget.Toast.makeText(getContext(), "No Round data available", android.widget.Toast.LENGTH_SHORT).show();
                 return;
             }
-            
-            String[] header = headerLine.split(",");
-            // Detect nrPart from header (columns 2, 3, 4... are bout number columns)
-            int nrPart = 0;
-            for (int i = 2; i < header.length; i++) {
-                if (header[i].trim().matches("\\d+")) nrPart++;
-                else break;
+
+            class Agg {
+                int given;
+                int received;
+                int victories;
+                int boutsWon;
+                int boutsLost;
             }
-            android.util.Log.v("MergedFragment", "Detected nrPart=" + nrPart + " from Fencing_backup.csv");
-            
-            // Read all participant lines
-            java.util.List<String[]> allTokens = new java.util.ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                allTokens.add(line.split(",", -1));
-            }
-            reader.close();
-            
-            // Parse bout results matrix
-            int actualPart = Math.min(nrPart, allTokens.size());
-            int[][] boutResults = new int[actualPart][actualPart];
-            String[] participantNames = new String[actualPart];
-            for (int i = 0; i < actualPart; i++) {
-                for (int j = 0; j < actualPart; j++) {
-                    boutResults[i][j] = -1;
+
+            java.util.Map<String, Agg> byName = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < nrPart; i++) {
+                String name = participantNames[i] != null ? participantNames[i].trim() : "";
+                if (!name.isEmpty() && !byName.containsKey(name)) {
+                    byName.put(name, new Agg());
                 }
             }
-            
-            for (int i = 0; i < actualPart; i++) {
-                String[] tokens = allTokens.get(i);
-                if (tokens.length < 2) continue;
-                participantNames[i] = tokens[1];
-                
-                // Parse bout columns
-                for (int j = 0; j < actualPart && (2 + j) < tokens.length; j++) {
-                    String boutVal = tokens[2 + j].trim();
-                    if (!boutVal.isEmpty() && !boutVal.equalsIgnoreCase("X")) {
-                        try {
-                            boutResults[i][j] = Integer.parseInt(boutVal);
-                        } catch (Exception e) {
-                            boutResults[i][j] = -1;
+
+            for (int r = 1; r <= rounds; r++) {
+                int[][] roundResults = vm.getRoundBoutResultsSnapshot(r);
+                if (roundResults == null) continue;
+
+                for (int i = 0; i < nrPart; i++) {
+                    String nameI = participantNames[i] != null ? participantNames[i].trim() : "";
+                    if (nameI.isEmpty()) continue;
+                    Agg ai = byName.computeIfAbsent(nameI, k -> new Agg());
+
+                    for (int j = 0; j < nrPart; j++) {
+                        if (i == j) continue;
+                        String nameJ = participantNames[j] != null ? participantNames[j].trim() : "";
+                        if (nameJ.isEmpty()) continue;
+
+                        boolean validI = i < roundResults.length && roundResults[i] != null && j < roundResults[i].length;
+                        boolean validJ = j < roundResults.length && roundResults[j] != null && i < roundResults[j].length;
+                        if (!validI || !validJ) continue;
+                        int s = roundResults[i][j];
+                        int o = roundResults[j][i];
+                        if (s < 0 || o < 0) continue;
+
+                        ai.given += s;
+                        ai.received += o;
+                        if (s > o) {
+                            ai.victories++;
+                            ai.boutsWon++;
+                        } else if (s < o) {
+                            ai.boutsLost++;
                         }
                     }
                 }
             }
-            
-            // Build rows from parsed data
+
             rows.clear();
-            // First pass: create rows with P=0
-            java.util.List<int[]> statsForRanking = new java.util.ArrayList<>(); // [rowIndex, percent, index, given]
-            for (int i = 0; i < actualPart; i++) {
-                String name = participantNames[i] != null ? participantNames[i] : "";
-                int victories = 0, given = 0, received = 0, boutsWon = 0, boutsLost = 0;
-                boolean hasBout = false;
-                for (int j = 0; j < actualPart; j++) {
-                    if (i != j && boutResults[i][j] >= 0 && boutResults[j][i] >= 0 &&
-                        participantNames[j] != null && !participantNames[j].isEmpty()) {
-                        int s = boutResults[i][j];
-                        int o = boutResults[j][i];
-                        if (s > o) { victories++; boutsWon++; }
-                        else if (s < o) { boutsLost++; }
-                        given += s;
-                        received += o;
-                        hasBout = true;
-                    }
+            java.util.List<int[]> statsForRanking = new java.util.ArrayList<>();
+            java.util.List<String> names = new java.util.ArrayList<>(byName.keySet());
+            for (int i = 0; i < names.size(); i++) {
+                String name = names.get(i);
+                Agg a = byName.get(name);
+                int index = a.given - a.received;
+                int totalBouts = a.boutsWon + a.boutsLost;
+                int percent = totalBouts > 0 ? (int) Math.round((double) a.boutsWon / totalBouts * 100.0) : 0;
+                rows.add(new Row(i + 1, name, a.victories, a.given, a.received, index, percent, 0, null));
+                if (totalBouts > 0) {
+                    statsForRanking.add(new int[]{i, percent, index, a.given});
                 }
-                int index = given - received;
-                int percent = (boutsWon + boutsLost) > 0 ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100) : 0;
-                rows.add(new Row(i + 1, name, victories, given, received, index, percent, 0, null));
-                if (name != null && !name.trim().isEmpty() && hasBout) {
-                    statsForRanking.add(new int[]{i, percent, index, given});
-                }
-                android.util.Log.v("MergedFragment", "Row loaded from Round backup: Nr=" + (i + 1) + ", Name='" + name + "', V=" + victories);
             }
-            // Second pass: calculate P ranking (same algorithm as Round page)
+
             statsForRanking.sort((a, b) -> {
-                int cmp = Integer.compare(b[1], a[1]); // percent DESC
+                int cmp = Integer.compare(b[1], a[1]);
                 if (cmp != 0) return cmp;
-                cmp = Integer.compare(b[2], a[2]); // index DESC
+                cmp = Integer.compare(b[2], a[2]);
                 if (cmp != 0) return cmp;
-                return Integer.compare(b[3], a[3]); // given DESC
+                return Integer.compare(b[3], a[3]);
             });
+
             int pos = 1;
             for (int i = 0; i < statsForRanking.size(); i++) {
                 if (i > 0) {
@@ -902,16 +888,14 @@ public class MergedFragment extends Fragment {
                 }
                 rows.get(statsForRanking.get(i)[0]).p = pos;
             }
-            
+
             calculateFinalPositions();
-            
             useCsvOnly = false;
             backupMergedMatrix();
             renderRows();
-            android.widget.Toast.makeText(getContext(), "Reloaded " + rows.size() + " participants from Round", android.widget.Toast.LENGTH_SHORT).show();
-            
+            android.widget.Toast.makeText(getContext(), "Reloaded merged data from " + rounds + " round(s)", android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            android.util.Log.e("MergedFragment", "Error loading Fencing_backup.csv: " + e.getMessage());
+            android.util.Log.e("MergedFragment", "Error aggregating rounds: " + e.getMessage());
             android.widget.Toast.makeText(getContext(), "Reload failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
     }
@@ -964,7 +948,7 @@ public class MergedFragment extends Fragment {
         }
         // Use dynamic color index from ViewModel (shared with RoundFragment)
         ScoresViewModel scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
-        int colorIdx = scoresViewModel.getColorCycleIndex().getValue() != null ? scoresViewModel.getColorCycleIndex().getValue() : 0;
+        int colorIdx = scoresViewModel.getRoundColorCycleIndex(1);
         int[] pair = RESULT_COLOR_PAIRS[colorIdx % RESULT_COLOR_PAIRS.length];
         TableRow headerRow = new TableRow(getContext());
         for (int col = 0; col < HEADERS.length; col++) {

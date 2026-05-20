@@ -49,6 +49,7 @@ import android.content.ContentResolver;
 import java.util.HashMap;
 import java.util.Map;
 import androidx.viewpager2.widget.ViewPager2;
+import androidx.lifecycle.ViewModelProvider;
 import java.util.List;
 import java.util.ArrayList;
 import android.provider.MediaStore;
@@ -56,11 +57,14 @@ import android.content.ContentValues;
 import java.io.OutputStreamWriter;
 import android.provider.Settings;
 import android.os.Build;
+import com.fencing.scores.ui.MainPagerAdapter;
 
 public class MainActivity extends AppCompatActivity {
         // Flag to indicate if a crash was detected on startup
         public static boolean crashDetected = false;
         private ViewPager2 viewPager;
+        private ScoresViewModel scoresViewModel;
+        private MainPagerAdapter pagerAdapter;
 
         public ViewPager2 getViewPager() {
             return viewPager;
@@ -143,11 +147,11 @@ public class MainActivity extends AppCompatActivity {
                 return 9999;
             }
         }
-    // Color cycling for result columns (cyan/green, #87CEFA/#B0C4DE, ...)
+    // Color cycling for result columns
     private final int[][] resultColorPairs = {
         {0xFFFFD700, 0xFFFF7F50}, // Gold/Coral (new default)
         {0xFF00FFFF, 0xFF00FF00},
-        {0xFF87CEFA, 0xFFB0C4DE},
+        {0xFF87DEFA, 0xFF9084DE},
         {0xFFFFFFE0, 0xFFF0E68C},
         {0xFF98FB98, 0xFF9ACD32},
         {0xFFA9A9A9, 0xFFDCDCDC}
@@ -245,7 +249,17 @@ public class MainActivity extends AppCompatActivity {
         }
 
         viewPager = findViewById(R.id.viewPager);
-        viewPager.setAdapter(new com.fencing.scores.ui.MainPagerAdapter(this));
+        scoresViewModel = new ViewModelProvider(this).get(ScoresViewModel.class);
+        if (crashDetected) {
+            int recoveredRounds = detectRoundCountFromBackups();
+            if (recoveredRounds > 1) {
+                scoresViewModel.setNrRounds(recoveredRounds);
+                android.util.Log.d("MainActivity", "Recovered nrRounds from backups: " + recoveredRounds);
+            }
+        }
+        int initialRounds = scoresViewModel.getNrRounds().getValue() != null ? scoresViewModel.getNrRounds().getValue() : 1;
+        pagerAdapter = new MainPagerAdapter(this, initialRounds);
+        viewPager.setAdapter(pagerAdapter);
         viewPager.setOffscreenPageLimit(1);  // Minimum - only adjacent pages kept
         
         // Enable ViewPager2 native swipe (works better with scrollable content)
@@ -253,9 +267,6 @@ public class MainActivity extends AppCompatActivity {
         
         // Circular navigation: wrap around at edges (Final -> Round, Round -> Final)
         // Use GestureDetector to detect flings at edge pages
-        final int PAGE_COUNT = 4;
-        final int LAST_PAGE = PAGE_COUNT - 1; // 3 = Final
-        
         android.view.GestureDetector edgeFlingDetector = new android.view.GestureDetector(this, 
             new android.view.GestureDetector.SimpleOnGestureListener() {
                 @Override
@@ -267,20 +278,33 @@ public class MainActivity extends AppCompatActivity {
                     float diffX = e2.getX() - e1.getX();
                     float threshold = 100; // minimum swipe distance
                     float velocityThreshold = 100; // minimum velocity
+                    int lastPage = pagerAdapter.getItemCount() - 1;
                     
-                    // On Final (page 3), swipe left (forward) -> wrap to Round (page 0)
-                    if (currentPage == LAST_PAGE && diffX < -threshold && Math.abs(velocityX) > velocityThreshold) {
+                    // On Final page, swipe left (forward) -> wrap to first Round page.
+                    if (currentPage == lastPage && diffX < -threshold && Math.abs(velocityX) > velocityThreshold) {
                         viewPager.setCurrentItem(0, true);
                         return true;
                     }
-                    // On Round (page 0), swipe right (backward) -> wrap to Final (page 3)
+                    // On first Round page, swipe right (backward) -> wrap to Final page.
                     if (currentPage == 0 && diffX > threshold && Math.abs(velocityX) > velocityThreshold) {
-                        viewPager.setCurrentItem(LAST_PAGE, true);
+                        viewPager.setCurrentItem(lastPage, true);
                         return true;
                     }
                     return false;
                 }
             });
+
+        scoresViewModel.getNrRounds().observe(this, roundsValue -> {
+            int rounds = roundsValue != null ? roundsValue : 1;
+            int current = viewPager.getCurrentItem();
+            // Rebind adapter so newly inserted Round pages are materialized reliably.
+            MainPagerAdapter newAdapter = new MainPagerAdapter(this, rounds);
+            viewPager.setAdapter(newAdapter);
+            pagerAdapter = newAdapter;
+            int maxPage = pagerAdapter.getItemCount() - 1;
+            int target = Math.min(current, maxPage);
+            viewPager.setCurrentItem(target, false);
+        });
         
         // Attach gesture detector to ViewPager2's internal RecyclerView
         View recyclerView = viewPager.getChildAt(0);
@@ -364,6 +388,45 @@ public class MainActivity extends AppCompatActivity {
     public void navigateToPage(int page) {
         switchToPage(page);
     }
+
+    public int getRoundPagesCount() {
+        return scoresViewModel != null && scoresViewModel.getNrRounds().getValue() != null
+            ? scoresViewModel.getNrRounds().getValue() : 1;
+    }
+
+    public int getMergedPageIndex() {
+        return getRoundPagesCount();
+    }
+
+    public int getKOPageIndex() {
+        return getRoundPagesCount() + 1;
+    }
+
+    public int getFinalPageIndex() {
+        return getRoundPagesCount() + 2;
+    }
+
+    public int getRoundPageIndex(int roundCode) {
+        int rounds = getRoundPagesCount();
+        int clamped = Math.max(1, Math.min(rounds, roundCode));
+        return clamped - 1;
+    }
+
+    public void navigateToMergedPage() {
+        navigateToPage(getMergedPageIndex());
+    }
+
+    public void navigateToKOPage() {
+        navigateToPage(getKOPageIndex());
+    }
+
+    public void navigateToFinalPage() {
+        navigateToPage(getFinalPageIndex());
+    }
+
+    public void navigateToRoundPage(int roundCode) {
+        navigateToPage(getRoundPageIndex(roundCode));
+    }
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -400,6 +463,35 @@ public class MainActivity extends AppCompatActivity {
             android.util.Log.d("MainActivity", "deleteCrashFile: path=" + crashFile.getAbsolutePath() + ", existed=" + existed + ", deleted=" + deleted);
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "deleteCrashFile ERROR: " + e.getMessage());
+        }
+    }
+
+    private int detectRoundCountFromBackups() {
+        try {
+            File filesDir = getFilesDir();
+            if (filesDir == null) return 1;
+
+            int maxRound = 1;
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^Fencing_backup_R(\\d+)\\.csv$");
+            File[] files = filesDir.listFiles();
+            if (files == null) return 1;
+
+            for (File f : files) {
+                if (f == null) continue;
+                String name = f.getName();
+                java.util.regex.Matcher m = pattern.matcher(name);
+                if (m.matches()) {
+                    try {
+                        int r = Integer.parseInt(m.group(1));
+                        if (r > maxRound) maxRound = r;
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            return Math.max(1, Math.min(ScoresViewModel.MAX_ROUNDS, maxRound));
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "detectRoundCountFromBackups error: " + e.getMessage());
+            return 1;
         }
     }
     

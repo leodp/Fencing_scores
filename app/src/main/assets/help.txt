@@ -33,7 +33,7 @@ OVERVIEW ACTIONS -------------------------------------------------
 # Fencing Scores App - Actions Reference
 
 ## Pages (circular navigation)
-**Round (0) → Merged (1) → KO (2) → Final (3) → Round (0)**
+**Rounds1..RoundsN → Merged → KO → Final → Rounds1 (N = 1..5)**
 
 ## Navigation (All Pages)
  Swipe left  : Next page
@@ -46,6 +46,7 @@ OVERVIEW ACTIONS -------------------------------------------------
  Nr cell (top half) : Long press : Remove last participant
  Nr cell (bottom half) : Long press : Add participant
  Name cell : Click : Edit name
+ Name header : Long press : Select rounds number (1..5)
  Bout cell : Click : Enter scores
  V/→/←/I/% cell : Click : Cycle color theme
  P cell : Long press : Sort by ranking
@@ -78,7 +79,7 @@ Read-only rankings display.
 
 
 ## Data Flow
-Round (pool) → Merged (rankings) → KO → Final (results)
+Rounds1..RoundsN (pool) → Merged (aggregated rankings) → KO → Final (results)
 
 ## Automatic Backup
 Each page backs up to `{Page}_backup.csv` on changes

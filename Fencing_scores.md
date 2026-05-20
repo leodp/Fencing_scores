@@ -4,7 +4,7 @@
 Android app for managing complete fencing tournaments: pool rounds, merged rankings, knockout brackets, and final results.
 
 **License:** GNU General Public License V3.0  
-**Version:** 1.7  
+**Version:** 1.8  
 **Target:** Android 11+ (API 30+, target API 34)  
 **App Name:** "Fence!"  
 **APK Filename:** `Fence.apk` (project root — ready to install)  
@@ -13,10 +13,10 @@ Android app for managing complete fencing tournaments: pool rounds, merged ranki
 ## App Structure
 
 ### Pages (ViewPager2 Navigation)
-1. **Round** - Pool scoring matrix (landscape)
-2. **Merged** - Combined rankings from pools (portrait)
-3. **KO** - Knockout bracket (portrait)
-4. **Final** - Final tournament rankings (portrait)
+1. **Rounds1..RoundsN** - Pool scoring matrices (N=1..5)
+2. **Merged** - Combined rankings from all enabled rounds
+3. **KO** - Knockout bracket
+4. **Final** - Final tournament rankings
 
 Navigation: Swipe left/right to cycle through pages. Long-press on Final returns to Round.
 
@@ -26,8 +26,7 @@ Navigation: Swipe left/right to cycle through pages. Long-press on Final returns
 
 ### Configuration
 - **Participants:** 10 default (adjustable 5-18)
-- **Maximum Score:** 16 touches per bout
-- **Orientation:** Landscape, full screen
+- **Maximum Score:** 15 touches per bout
 - **Display:** ~98% screen height usage, dynamically sized cells
 
 ### Visual Design
@@ -82,7 +81,7 @@ Navigation: Swipe left/right to cycle through pages. Long-press on Final returns
 - **Buttons (3×2 grid with rounded corners):**
   - LOAD: Open file picker for CSV
   - RESTORE: Load from backup
-  - SAVE: Export as `BoutRounds_YYYYMMDD_hh.mm.ss.csv`
+  - SAVE: Export as `BoutRounds_1R_YYYYMMDD_hh.mm.ss.csv` (round code changes per page)
   - QR OUT: Display QR code (with screenshot of matrix as background)
   - QR IN: Scan QR code to import
   - QUIT: Exit app (red, bold) — clears all backup files for a clean restart
@@ -116,7 +115,6 @@ All calculated only for participants with non-empty names:
 Combine rankings from multiple pool rounds into unified seeding for KO phase.
 
 ### Layout
-- **Orientation:** Portrait, full screen
 - **Structure:** Split view with left and right tables
 - **Background:** #D0D0D0
 
@@ -153,7 +151,6 @@ Saves to Merged_backup.csv after each change.
 Knockout bracket with multiple modes: standard, repechage, quick groupings, and mixed-round groupings.
 
 ### Layout
-- **Orientation:** Portrait, full screen
 - **Background:** White
 - **Match boxes:** 32dp height, rounded corners, border
 - **Scrollable:** Both horizontal and vertical (page swipe only at content edges)
@@ -242,7 +239,6 @@ Saves to KO_backup.csv after each change, including mode and all group data.
 Display consolidated final tournament rankings.
 
 ### Layout
-- **Orientation:** Portrait, full screen
 - **Background:** #D0D0D0
 - **Structure:** 3-column layout for rankings
 
@@ -316,7 +312,7 @@ G1,1,1,Alice,15,Bob,10,Alice
 ### Color Themes (Result Columns)
 Cycling colors when clicking result columns (except P). Synced across Round and KO pages.
 1. #00FFFF / #39E75F (cyan/green)
-2. #87CEFA / #B0C4DE (light blue/gray)
+2. #87DEFA / #9084DE (light blue/violet)
 3. #FFFFE0 / #F0E68C (light yellow/khaki)
 4. #98FB98 / #9ACD32 (pale green/yellow-green)
 5. #FFD700 / #FF7F50 (gold/coral) - Default
@@ -333,7 +329,6 @@ Cycling colors when clicking result columns (except P). Synced across Round and 
 ### Screen Specifications
 - Full screen (no action bar)
 - Dynamic cell/font sizing based on content
-- Round page: Landscape only
 - Forced light mode (no dark mode support)
 
 ---

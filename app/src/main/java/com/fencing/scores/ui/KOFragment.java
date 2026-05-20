@@ -80,7 +80,7 @@ public class KOFragment extends Fragment {
             // Color pairs for KO boxes (same as RoundFragment)
             private static final int[][] RESULT_COLOR_PAIRS = {
                 {0xFFFFD700, 0xFFFF7F50}, // Default
-                {0xFF87CEFA, 0xFFB0C4DE},
+                {0xFF87DEFA, 0xFF9084DE},
                 {0xFFFFFFE0, 0xFFF0E68C},
                 {0xFF98FB98, 0xFF9ACD32},
                 {0xFFA9A9A9, 0xFFDCDCDC},
@@ -222,8 +222,7 @@ public class KOFragment extends Fragment {
         // Re-render if color changed while on another page
         int currentColorIdx = 0;
         try {
-            Integer val = scoresViewModel.getColorCycleIndex().getValue();
-            if (val != null) currentColorIdx = val;
+            currentColorIdx = scoresViewModel.getRoundColorCycleIndex(1);
         } catch (Exception e) {}
         if (currentColorIdx != lastRenderedColorIdx && koBoxLayoutRef != null) {
             renderKOTable(koBoxLayoutRef);
@@ -1777,10 +1776,10 @@ public class KOFragment extends Fragment {
         // Set rankings in ViewModel
         scoresViewModel.setFinalKORankings(rankings);
         
-        // Navigate to FinalFragment (position 3)
+        // Navigate to FinalFragment (dynamic index)
         if (getActivity() instanceof com.fencing.scores.MainActivity) {
             com.fencing.scores.MainActivity activity = (com.fencing.scores.MainActivity) getActivity();
-            activity.navigateToPage(3);
+            activity.navigateToFinalPage();
         }
     }
     
@@ -2271,8 +2270,7 @@ public class KOFragment extends Fragment {
         
         // Track last rendered color index for onResume change detection
         try {
-            Integer val = scoresViewModel.getColorCycleIndex().getValue();
-            if (val != null) lastRenderedColorIdx = val;
+            lastRenderedColorIdx = scoresViewModel.getRoundColorCycleIndex(1);
         } catch (Exception e) {}
         
         // For Quick KO and Mix-Rounds modes, render multiple group trees
@@ -2375,7 +2373,7 @@ public class KOFragment extends Fragment {
         int verticalSpacingPx = (int) (16 * density); // 16dp
         int colorIdx = 0;
         try {
-            colorIdx = scoresViewModel.getColorCycleIndex().getValue() != null ? scoresViewModel.getColorCycleIndex().getValue() : 0;
+            colorIdx = scoresViewModel.getRoundColorCycleIndex(1);
         } catch (Exception e) {}
         int[] colorPair = RESULT_COLOR_PAIRS[colorIdx % RESULT_COLOR_PAIRS.length];
         int colorTop = colorPair[0];
@@ -3316,11 +3314,11 @@ public class KOFragment extends Fragment {
         return ref;
     }
 
-    // Navigate to Final page (page index 3)
+    // Navigate to Final page (dynamic index)
     private void navigateToFinalPage() {
         Activity activity = getActivity();
         if (activity instanceof MainActivity) {
-            ((MainActivity) activity).navigateToPage(3);
+            ((MainActivity) activity).navigateToFinalPage();
         }
     }
     
@@ -3328,7 +3326,7 @@ public class KOFragment extends Fragment {
     private void navigateToPreviousPage() {
         Activity activity = getActivity();
         if (activity instanceof MainActivity) {
-            ((MainActivity) activity).navigateToPage(1); // 1 = MergedFragment
+            ((MainActivity) activity).navigateToMergedPage();
         }
     }
 
@@ -3761,7 +3759,7 @@ public class KOFragment extends Fragment {
         
         int colorIdx = 0;
         try {
-            colorIdx = scoresViewModel.getColorCycleIndex().getValue() != null ? scoresViewModel.getColorCycleIndex().getValue() : 0;
+            colorIdx = scoresViewModel.getRoundColorCycleIndex(1);
         } catch (Exception e) {}
         int[] colorPair = RESULT_COLOR_PAIRS[colorIdx % RESULT_COLOR_PAIRS.length];
         int colorTop = colorPair[0];

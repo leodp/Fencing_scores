@@ -110,7 +110,7 @@ public class FinalFragment extends Fragment {
     private void navigateToPreviousPage() {
         Activity activity = getActivity();
         if (activity instanceof MainActivity) {
-            ((MainActivity) activity).navigateToPage(0); // 0 = RoundFragment (loop)
+            ((MainActivity) activity).navigateToRoundPage(1);
         }
     }
 
