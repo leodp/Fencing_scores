@@ -19,6 +19,9 @@
 ### Round Page
 - Updated late-missing-bout highlight color to `#B0B0B0`
 - Round CSV default filename now includes round code before date (e.g. `BoutRounds_1R_YYYYMMDD_HH.mm.ss.csv`)
+- Fixed clean QUIT flow: backup files are deleted and the next startup is empty
+- Clearing a participant name now permanently clears that participant's bout row/column (results are not restored when re-entering a name)
+- Name header text updated to `Round Nr: X`; click and long-press now both open round count selector
 
 ## [V1.7 - 2026-05-20]
 

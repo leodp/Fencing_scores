@@ -62,6 +62,8 @@ import com.fencing.scores.ui.MainPagerAdapter;
 public class MainActivity extends AppCompatActivity {
         // Flag to indicate if a crash was detected on startup
         public static boolean crashDetected = false;
+    // Set by QUIT action to suppress backup writes and force final cleanup.
+    public static boolean cleanExitInProgress = false;
         private ViewPager2 viewPager;
         private ScoresViewModel scoresViewModel;
         private MainPagerAdapter pagerAdapter;
@@ -231,6 +233,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        cleanExitInProgress = false;
         // Force light mode - app uses white backgrounds and has no dark mode resources
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
             androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO);
@@ -368,6 +371,12 @@ public class MainActivity extends AppCompatActivity {
         // If onStop() completes normally, app exited cleanly
         android.util.Log.d("MainActivity", "onStop: deleting crash file");
         deleteCrashFile();
+        if (cleanExitInProgress) {
+            deleteAllBackupFiles();
+            if (scoresViewModel != null) {
+                scoresViewModel.resetToDefault();
+            }
+        }
     }
 
     @Override
@@ -492,6 +501,28 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "detectRoundCountFromBackups error: " + e.getMessage());
             return 1;
+        }
+    }
+
+    private void deleteAllBackupFiles() {
+        try {
+            File filesDir = getFilesDir();
+            if (filesDir == null) return;
+            File[] files = filesDir.listFiles();
+            if (files == null) return;
+            for (File f : files) {
+                if (f == null) continue;
+                String name = f.getName();
+                boolean isRoundBackup = "Fencing_backup.csv".equals(name)
+                    || (name.startsWith("Fencing_backup_R") && name.endsWith(".csv"));
+                boolean isPageBackup = name.endsWith("_backup.csv");
+                if (isRoundBackup || isPageBackup) {
+                    boolean deleted = f.delete();
+                    android.util.Log.d("MainActivity", "deleteAllBackupFiles: " + name + " deleted=" + deleted);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "deleteAllBackupFiles ERROR: " + e.getMessage());
         }
     }
     

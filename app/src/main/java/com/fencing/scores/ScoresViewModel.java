@@ -339,6 +339,29 @@ public class ScoresViewModel extends ViewModel {
             boutResults.setValue(cloneMatrix(roundBoutResults.getOrDefault(activeRoundCode, createEmptyMatrix(targetSize))));
         }
     }
+
+    public void clearParticipantResultsAtIndexAcrossRounds(int index) {
+        synchronized (resizeLock) {
+            if (index < 0) return;
+            persistActiveRoundData();
+            int rounds = getCurrentRoundCount();
+            for (int r = 1; r <= rounds; r++) {
+                int[][] m = roundBoutResults.get(r);
+                if (m == null || index >= m.length) continue;
+                for (int j = 0; j < m[index].length; j++) {
+                    m[index][j] = -1;
+                }
+                for (int i = 0; i < m.length; i++) {
+                    if (m[i] != null && index < m[i].length) {
+                        m[i][index] = -1;
+                    }
+                }
+                roundBoutResults.put(r, m);
+            }
+            boutResults.setValue(cloneMatrix(roundBoutResults.getOrDefault(activeRoundCode, createEmptyMatrix(nrPart.getValue() != null ? nrPart.getValue() : DEFAULT_PARTICIPANTS))));
+        }
+    }
+
     public void setBoutResults(int[][] results) {
         boutResults.setValue(results);
         synchronized (resizeLock) {

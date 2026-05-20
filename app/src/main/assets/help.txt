@@ -46,7 +46,7 @@ OVERVIEW ACTIONS -------------------------------------------------
  Nr cell (top half) : Long press : Remove last participant
  Nr cell (bottom half) : Long press : Add participant
  Name cell : Click : Edit name
- Name header : Long press : Select rounds number (1..5)
+Name header ("Round Nr: X") : Click or long press : Select rounds number (1..5)
  Bout cell : Click : Enter scores
  V/→/←/I/% cell : Click : Cycle color theme
  P cell : Long press : Sort by ranking
@@ -85,6 +85,7 @@ Rounds1..RoundsN (pool) → Merged (aggregated rankings) → KO → Final (resul
 Each page backs up to `{Page}_backup.csv` on changes
 Crash detection via CRASH.txt
 Backup recovered with RESTORE buttons
+QUIT performs a clean exit: all backup files are deleted and next start is empty
 
 ## QR Codes
 GZIP + Base64 compression for all QR transfers

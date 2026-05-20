@@ -133,8 +133,14 @@ The generated APKs will be located at:
 
 - **Auto-backup**: Each page saves to `*_backup.csv` after changes
 - **Crash recovery**: RESTORE buttons load from backup files
+- **Clean quit**: QUIT removes all backup files so next startup begins empty
 - **CSV export**: SAVE buttons allow user-selected file location
 - **QR transfer**: Data can be shared between devices via QR codes
+
+## Multi-Round Header
+
+- Round Name header now shows `Round Nr: X`
+- Click and long-press both open the `Rounds Nr. in the pool` selector
 
 ## Ranking System
 

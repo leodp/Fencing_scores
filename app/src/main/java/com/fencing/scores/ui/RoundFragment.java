@@ -702,7 +702,7 @@ public class RoundFragment extends Fragment {
             cellHeight > 0 ? cellHeight : TableLayout.LayoutParams.WRAP_CONTENT));
         String[] headers = new String[nrPart + 8];
         headers[0] = "Nr";
-        headers[1] = getRoundLabelPrefix() + ". Name:";
+        headers[1] = "Round Nr: " + roundCode;
         for (int i = 0; i < nrPart; i++) {
             headers[i + 2] = String.valueOf(i + 1);
         }
@@ -721,6 +721,10 @@ public class RoundFragment extends Fragment {
                 if (i == 1) {
                     cell.setClickable(true);
                     cell.setLongClickable(true);
+                    cell.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    cell.setTextColor(android.graphics.Color.WHITE);
+                    cell.setShadowLayer(3f, 2f, 2f, android.graphics.Color.BLACK);
+                    cell.setOnClickListener(v -> showRoundsCountDialog());
                     cell.setOnLongClickListener(v -> {
                         showRoundsCountDialog();
                         return true;
@@ -1365,6 +1369,7 @@ public class RoundFragment extends Fragment {
         });
         quitBtn.setOnClickListener(v -> {
             dialog.dismiss();
+            com.fencing.scores.MainActivity.cleanExitInProgress = true;
             // Delete crash file before exiting to ensure clean start next time
             try {
                 java.io.File documentsDir = new java.io.File(
@@ -1425,6 +1430,9 @@ public class RoundFragment extends Fragment {
                 newName = newName.substring(0, 1).toUpperCase() + newName.substring(1);
             }
             String oldName = participantNames[participantIndex];
+            if ((oldName != null && !oldName.trim().isEmpty()) && newName.isEmpty()) {
+                scoresViewModel.clearParticipantResultsAtIndexAcrossRounds(participantIndex);
+            }
             participantNames[participantIndex] = newName;
             scoresViewModel.setParticipantNames(participantNames);
             // If a new name is entered (not empty), do NOT reset or change bout results—they remain as is.
@@ -1700,6 +1708,7 @@ public class RoundFragment extends Fragment {
         try {
             android.content.Context ctx = getContext();
             if (ctx == null) return;
+            if (com.fencing.scores.MainActivity.cleanExitInProgress) return;
             String csv = generateCSVCompat();
             java.io.File filesDir = ctx.getFilesDir();
             java.io.File outFile = new java.io.File(filesDir, getRoundBackupFilename());
