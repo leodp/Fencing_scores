@@ -1,11 +1,28 @@
 # Changelog
 
+## [V2.0 - 2026-05-21]
+
+### Stability and UX Cleanup
+- Reduced noisy debug messaging in Round and Merged flows by commenting non-essential diagnostic logs and sort-notification toasts
+- Kept important messages for save confirmations and error conditions
+
+### Battery and Efficiency
+- Removed redundant Merged backup writes triggered by passive table renders; backups are now tied to data-changing actions
+- Removed duplicate Merged render pass in `onStart` (render/restore work remains in `onResume`)
+- Removed immediate extra table redraws after opening CSV picker actions in Merged
+
+### Round and Merged Consistency
+- Verified Round missing-bout highlight threshold is `25%`
+- Verified Round matrix height scaling uses `100%` of available screen height
+- Ensured backup still runs for Round bout entry and Round name edits
+- Ensured backup still runs for Merged data edits, name changes, sorting actions, and import flows
+
 ## [V1.8 - 2026-05-20]
 
 ### Multi-Rounds (1..5)
 - Added dynamic multi-round architecture: pages are now `Rounds1..RoundsN`, then `Merged`, `KO`, `Final`
 - Added long-press action on the Round name header to configure round count with a `1..5` popup (`1` highlighted, `CANCEL` action)
-- Round pages now carry their own round code and label (`nR. Name:`)
+- Round pages now carry their own round code label (`Round Nr: X`)
 - Round backups are now round-scoped (`Fencing_backup.csv` for R1, `Fencing_backup_Rn.csv` for R2..R5)
 
 ### Data Synchronization and Navigation
@@ -15,9 +32,13 @@
 
 ### Merged Page
 - `RELOAD round` now aggregates ranking stats across all enabled rounds (by participant name), then recalculates P and FinalPos
+- Long-press on Name cells now toggles sorting between A-Z and Z-A
+- Long-press on P cells now toggles sorting between increasing and decreasing P values
+- Long-press on FinalPos cells now toggles sorting between increasing and decreasing FinalPos values
 
 ### Round Page
-- Updated late-missing-bout highlight color to `#B0B0B0`
+- Updated late-missing-bout highlight color to `#B0B0B0` when missing valid bouts are <= `25%`
+- Matrix height scaling updated to use `100%` of available screen height
 - Round CSV default filename now includes round code before date (e.g. `BoutRounds_1R_YYYYMMDD_HH.mm.ss.csv`)
 - Fixed clean QUIT flow: backup files are deleted and the next startup is empty
 - Clearing a participant name now permanently clears that participant's bout row/column (results are not restored when re-entering a name)

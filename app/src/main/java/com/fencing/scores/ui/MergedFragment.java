@@ -116,8 +116,6 @@ public class MergedFragment extends Fragment {
                             scoresViewModel.getColorCycleIndex().observe(getViewLifecycleOwner(), idx -> {
                                 if (isResumed()) renderRows();
                             });
-                            // Debug: log fragment created
-                            android.util.Log.d("MergedFragment", "onViewCreated: MergedFragment created and observers set");
                         }
 
                         @Override
@@ -137,7 +135,6 @@ public class MergedFragment extends Fragment {
                         private void tryAutoRestoreFromBackup() {
                             // Only restore if app crashed - normal restart should start fresh
                             if (!com.fencing.scores.MainActivity.crashDetected) {
-                                android.util.Log.d("MergedFragment", "No crash detected, skipping auto-restore");
                                 return;
                             }
                             try {
@@ -173,7 +170,6 @@ public class MergedFragment extends Fragment {
                                         if (!loadedRows.isEmpty()) {
                                             rows.clear();
                                             rows.addAll(loadedRows);
-                                            android.util.Log.i("MergedFragment", "Auto-restored " + rows.size() + " rows from Merged_backup.csv");
                                             return; // Success, no need to fall back
                                         }
                                     }
@@ -183,33 +179,25 @@ public class MergedFragment extends Fragment {
                                 // Fall back to Fencing_backup.csv (Round data) if Merged backup doesn't exist or is empty
                                 java.io.File roundBackupFile = new java.io.File(filesDir, "Fencing_backup.csv");
                                 if (roundBackupFile.exists()) {
-                                    android.util.Log.i("MergedFragment", "No valid Merged_backup.csv, loading from Fencing_backup.csv");
                                     loadRoundData();
                                 }
                             } catch (Exception e) {
-                                android.util.Log.w("MergedFragment", "Auto-restore failed: " + e.getMessage());
+                                android.util.Log.e("MergedFragment", "Auto-restore failed: " + e.getMessage());
                             }
                         }
 
                         @Override
                         public void onStart() {
                             super.onStart();
-                            // If rows is empty, try to restore from backup first
-                            if (rows == null || rows.isEmpty()) {
-                                tryAutoRestoreFromBackup();
-                            }
-                            // Also redraw table and colors when fragment starts (covers navigation)
-                            renderRows();
+                            // Keep onStart light; full restore/render work is handled in onResume.
                         }
                     // Helper to move to the previous page (Merged -> Round, KO -> Merged, etc.)
                     private void navigateToPreviousPage() {
         if (getActivity() instanceof com.fencing.scores.MainActivity) {
             com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
             int rounds = mainActivity.getRoundPagesCount();
-            android.util.Log.i("MergedFragment", "Navigating to last Round page (index " + (rounds - 1) + ")");
             mainActivity.navigateToRoundPage(rounds);
         } else if (getActivity() instanceof com.fencing.scores.MergedActivity) {
-            android.util.Log.i("MergedFragment", "MergedFragment is attached to MergedActivity. Navigation to Round page is not supported in this context.");
             android.widget.Toast.makeText(getContext(), "Navigation to Round page is only available in MainActivity.", android.widget.Toast.LENGTH_SHORT).show();
         } else {
             android.util.Log.e("MergedFragment", "Activity is not MainActivity or MergedActivity, cannot navigate to previous page. Actual activity: " + (getActivity() != null ? getActivity().getClass().getName() : "null"));
@@ -217,10 +205,8 @@ public class MergedFragment extends Fragment {
                     }
                 // Helper to move to the next page (KO -> Round, Merged -> KO, etc.)
                 private void navigateToNextPage() {
-                    android.util.Log.d("MergedFragment", "navigateToNextPage: Attempting navigation from Merged to KO");
                     if (getActivity() instanceof com.fencing.scores.MainActivity) {
                         com.fencing.scores.MainActivity mainActivity = (com.fencing.scores.MainActivity) getActivity();
-                        android.util.Log.i("MergedFragment", "navigateToNextPage: Navigating to KO page");
                         mainActivity.navigateToKOPage();
                     } else {
                         android.util.Log.e("MergedFragment", "navigateToNextPage: Activity is not MainActivity, cannot navigate to KO page. Actual activity: " + (getActivity() != null ? getActivity().getClass().getName() : "null"));
@@ -246,6 +232,7 @@ public class MergedFragment extends Fragment {
         // Backup the merged matrix to Merged_backup.csv in Documents
         private void backupMergedMatrix() {
             try {
+                if (com.fencing.scores.MainActivity.cleanExitInProgress) return;
                 java.io.File filesDir = requireContext().getFilesDir();
                 java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
                 java.io.FileWriter writer = new java.io.FileWriter(backupFile, false);
@@ -328,6 +315,9 @@ public class MergedFragment extends Fragment {
     private java.util.List<Row> rows = new java.util.ArrayList<>();
     private boolean useCsvOnly = false;
     private boolean didRestore = false;
+    private boolean nameSortAscending = true;
+    private boolean pSortAscending = true;
+    private boolean finalPosSortAscending = true;
 
     static class Row {
         int nr;
@@ -391,7 +381,7 @@ public class MergedFragment extends Fragment {
         restoreBtn.setTextColor(0xFFFFFFFF);
         restoreBtn.setMinWidth(btnMinWidth);
         restoreBtn.setOnClickListener(v -> {
-            android.util.Log.v("MergedFragment", "RESTORE button pressed - loading from Merged_backup.csv");
+            // android.util.Log.v("MergedFragment", "RESTORE button pressed - loading from Merged_backup.csv");
             restoreData();
         });
         LinearLayout.LayoutParams lpRestore = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -433,12 +423,12 @@ public class MergedFragment extends Fragment {
 
         // RELOAD always fetches from RoundFragment
         reloadBtn.setOnClickListener(v -> {
-            android.util.Log.v("MergedFragment", "RELOAD button pressed - loading from RoundFragment");
+            // android.util.Log.v("MergedFragment", "RELOAD button pressed - loading from RoundFragment");
             useCsvOnly = false;
             loadRoundData();
         });
-        replaceCsvBtn.setOnClickListener(v -> { selectCsvFile(1001); renderRows(); });
-        addCsvBtn.setOnClickListener(v -> { selectCsvFile(1002); renderRows(); });
+        replaceCsvBtn.setOnClickListener(v -> selectCsvFile(1001));
+        addCsvBtn.setOnClickListener(v -> selectCsvFile(1002));
         
         return root;
     }
@@ -456,7 +446,7 @@ public class MergedFragment extends Fragment {
 
     // Placeholder for RESTORE button action
     private void restoreData() {
-        android.util.Log.v("MergedFragment", "restoreData() called");
+        // android.util.Log.v("MergedFragment", "restoreData() called");
         StringBuilder sb = new StringBuilder();
         sb.append("MergedFragment RESTORE: Loading backup CSV\n");
         java.io.File filesDir = requireContext().getFilesDir();
@@ -499,13 +489,13 @@ public class MergedFragment extends Fragment {
                 else if (h.equals("FinalPos")) idxFinalPos = i;
             }
             String line;
-            android.util.Log.v("MergedFragment", sb.toString());
+            // android.util.Log.v("MergedFragment", sb.toString());
             java.util.List<Row> loadedRows = new java.util.ArrayList<>();
             int[][] restoredBoutResults = new int[nrPart][nrPart];
             for (int i = 0; i < nrPart; i++) for (int j = 0; j < nrPart; j++) restoredBoutResults[i][j] = -1;
             int lineNum = 1;
             while ((line = reader.readLine()) != null) {
-                            android.util.Log.v("MergedFragment", "Parsing CSV line " + lineNum + ": " + line);
+                            // android.util.Log.v("MergedFragment", "Parsing CSV line " + lineNum + ": " + line);
                 lineNum++;
                 String[] tokens = line.split(",");
                 if (tokens.length < 2 + nrPart) {
@@ -545,8 +535,8 @@ public class MergedFragment extends Fragment {
                         } catch (Exception e) { finalPos = null; }
                     }
                     loadedRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
-                                        android.util.Log.v("MergedFragment", "Row added: Nr=" + nr + ", Name='" + name + "', V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
-                    android.util.Log.i("MergedFragment", "CSV line " + lineNum + " parsed: nr=" + nr + ", name=" + name + ", V=" + victories + ", ->=" + given + ", <-=" + received + ", I=" + index + ", %=" + percent + ", P=" + p);
+                                        // android.util.Log.v("MergedFragment", "Row added: Nr=" + nr + ", Name='" + name + "', V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
+                    // android.util.Log.i("MergedFragment", "CSV line " + lineNum + " parsed: nr=" + nr + ", name=" + name + ", V=" + victories + ", ->=" + given + ", <-=" + received + ", I=" + index + ", %=" + percent + ", P=" + p);
                 } catch (Exception parseEx) {
                     android.util.Log.e("MergedFragment", "CSV line " + lineNum + " parse error: " + parseEx.getMessage());
                 }
@@ -571,19 +561,19 @@ public class MergedFragment extends Fragment {
             }
             // For Merged backup, keep the values as loaded from CSV (do not recalculate)
             rows.clear();
-            android.util.Log.v("MergedFragment", "Clearing rows and loading backup...");
+            // android.util.Log.v("MergedFragment", "Clearing rows and loading backup...");
             rows.addAll(loadedRows);
-            android.util.Log.v("MergedFragment", "Loaded rows: " + rows.size());
+            // android.util.Log.v("MergedFragment", "Loaded rows: " + rows.size());
             useCsvOnly = true;
             // Only recalculate FinalPos for Round backup; Merged backup already has FinalPos
             if (!isMergedBackup) {
                 calculateFinalPositions();
-                android.util.Log.v("MergedFragment", "Calculating final positions after Round RESTORE...");
+                // android.util.Log.v("MergedFragment", "Calculating final positions after Round RESTORE...");
             } else {
-                android.util.Log.v("MergedFragment", "Skipping FinalPos recalculation for Merged backup (using saved values)");
+                // android.util.Log.v("MergedFragment", "Skipping FinalPos recalculation for Merged backup (using saved values)");
             }
             renderRows();
-            android.util.Log.v("MergedFragment", "Rendering rows after RESTORE...");
+            // android.util.Log.v("MergedFragment", "Rendering rows after RESTORE...");
             android.widget.Toast.makeText(getContext(), "Restored from: " + backupFile.getAbsolutePath(), android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.widget.Toast.makeText(getContext(), "Restore failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
@@ -629,7 +619,7 @@ public class MergedFragment extends Fragment {
                         else break;
                     }
                     boolean isRoundFormat = (nrPart > 0);
-                    android.util.Log.i("MergedFragment", "CSV format detected: " + (isRoundFormat ? "RoundFragment (nrPart=" + nrPart + ")" : "Merged"));
+                    // android.util.Log.i("MergedFragment", "CSV format detected: " + (isRoundFormat ? "RoundFragment (nrPart=" + nrPart + ")" : "Merged"));
                     
                     // Read all data lines first
                     java.util.List<String[]> allTokens = new java.util.ArrayList<>();
@@ -702,7 +692,7 @@ public class MergedFragment extends Fragment {
                             if (name != null && !name.trim().isEmpty() && hasBout) {
                                 csvStatsForRanking.add(new int[]{csvRows.size() - 1, percent, index, given});
                             }
-                            android.util.Log.i("MergedFragment", "CSV Round format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent);
+                            // android.util.Log.i("MergedFragment", "CSV Round format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent);
                         }
                         // Calculate P ranking for CSV Round format rows
                         csvStatsForRanking.sort((a, b) -> {
@@ -755,11 +745,11 @@ public class MergedFragment extends Fragment {
                             // P is kept as-is from CSV — never overwritten by FinalPos
                             
                             csvRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
-                            android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
+                            // android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
                         }
                     }
                     
-                    android.util.Log.i("MergedFragment", "CSV loaded: " + csvRows.size() + " rows");
+                    // android.util.Log.i("MergedFragment", "CSV loaded: " + csvRows.size() + " rows");
                     
                     if (requestCode == 1001) {
                         // REPLACE: clear existing rows and use loaded rows
@@ -792,7 +782,7 @@ public class MergedFragment extends Fragment {
     }
 
     private void loadRoundData() {
-        android.util.Log.v("MergedFragment", "loadRoundData() called - aggregating all rounds from ViewModel");
+        // android.util.Log.v("MergedFragment", "loadRoundData() called - aggregating all rounds from ViewModel");
 
         try {
             ScoresViewModel vm = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
@@ -916,23 +906,6 @@ public class MergedFragment extends Fragment {
     }
 
     private void renderRows() {
-        android.util.Log.v("MergedFragment", "renderRows() called");
-        StringBuilder sb = new StringBuilder();
-        sb.append("MergedFragment renderRows: Table state\n");
-        sb.append("Rows count: ").append(rows.size()).append("\n");
-        for (int i = 0; i < rows.size(); i++) {
-            Row r = rows.get(i);
-            sb.append("Row ").append(i+1).append(": Nr=").append(r.nr)
-                .append(", Name=").append(r.name)
-                .append(", V=").append(r.victories)
-                .append(", →=").append(r.given)
-                .append(", ←=").append(r.received)
-                .append(", I=").append(r.index)
-                .append(", %=").append(r.percent)
-                .append(", P=").append(r.p)
-                .append(", FinalPos=").append(r.finalPos).append("\n");
-        }
-        android.util.Log.v("MergedFragment", sb.toString());
         tableLayout.removeAllViews();
         tableLayoutRight.removeAllViews();
         // Ensure at least 1 row always exists (empty participant with zero fields)
@@ -940,11 +913,6 @@ public class MergedFragment extends Fragment {
         if (rows == null || rows.size() == 0) {
             rows = new java.util.ArrayList<>();
             rows.add(new Row(1, "", 0, 0, 0, 0, 0, 0, null));
-            android.util.Log.i("MergedFragment", "renderRows: No data, added empty participant row.");
-        }
-        // Only backup if we have real data (not just placeholder empty row)
-        if (hadRealData) {
-            backupMergedMatrix();
         }
         // Use dynamic color index from ViewModel (shared with RoundFragment)
         ScoresViewModel scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
@@ -983,9 +951,8 @@ public class MergedFragment extends Fragment {
             // Add long-press to P header to sort by P (position)
             if (h.equals("P")) {
                 tv.setOnLongClickListener(v -> {
-                    android.util.Log.d("MergedFragment", "Header long-pressed: P (column " + colIdx + ") - sorting by P");
-                    android.widget.Toast.makeText(getContext(), "Sorting by P", android.widget.Toast.LENGTH_SHORT).show();
-                    sortRowsByP();
+                    boolean asc = toggleSortRowsByP();
+                    backupMergedMatrix();
                     renderRows();
                     return true;
                 });
@@ -993,24 +960,8 @@ public class MergedFragment extends Fragment {
             // Add long-press to FinalPos header to sort and log verbose debug
             if (h.equals("FinalPos")) {
                 tv.setOnLongClickListener(v -> {
-                    android.util.Log.d("MergedFragment", "Header long-pressed: FinalPos (column " + colIdx + ")");
-                    StringBuilder sb2 = new StringBuilder();
-                    sb2.append("MergedFragment header long-press: FinalPos\n");
-                    sb2.append("Rows count: ").append(rows.size()).append("\n");
-                    for (int i = 0; i < rows.size(); i++) {
-                        Row r = rows.get(i);
-                        sb2.append("Row ").append(i+1).append(": Nr=").append(r.nr)
-                          .append(", Name=").append(r.name)
-                          .append(", V=").append(r.victories)
-                          .append(", →=").append(r.given)
-                          .append(", ←=").append(r.received)
-                          .append(", I=").append(r.index)
-                          .append(", %=").append(r.percent)
-                          .append(", P=").append(r.p)
-                          .append(", FinalPos=").append(r.finalPos).append("\n");
-                    }
-                    android.util.Log.i("MergedFragment", sb2.toString());
-                    sortRowsByFinalPos();
+                    boolean asc = toggleSortRowsByFinalPos();
+                    backupMergedMatrix();
                     renderRows();
                     return true;
                 });
@@ -1093,9 +1044,22 @@ public class MergedFragment extends Fragment {
                 if (colIdx == 8) {
                     cell.setBackground(makeBorderedCell(pair[1])); // Same color as FinalPos header
                     cell.setOnLongClickListener(v -> {
-                        android.util.Log.d("MergedFragment", "FinalPos cell long-pressed: row=" + (rowIdx+1) + " - sorting by FinalPos");
-                        android.widget.Toast.makeText(getContext(), "Sorting by FinalPos", android.widget.Toast.LENGTH_SHORT).show();
-                        sortRowsByFinalPos();
+                        boolean asc = toggleSortRowsByFinalPos();
+                        backupMergedMatrix();
+                        renderRows();
+                        return true;
+                    });
+                } else if (colIdx == 7) {
+                    cell.setOnLongClickListener(v -> {
+                        boolean asc = toggleSortRowsByP();
+                        backupMergedMatrix();
+                        renderRows();
+                        return true;
+                    });
+                } else if (colIdx == 1) {
+                    cell.setOnLongClickListener(v -> {
+                        boolean asc = toggleSortRowsByName();
+                        backupMergedMatrix();
                         renderRows();
                         return true;
                     });
@@ -1124,7 +1088,7 @@ public class MergedFragment extends Fragment {
                                 for (int idx = 0; idx < rows.size(); idx++) {
                                     rows.get(idx).nr = idx + 1;
                                 }
-                                android.util.Log.i("MergedFragment", "Removed last participant, now " + rows.size() + " rows");
+                                // android.util.Log.i("MergedFragment", "Removed last participant, now " + rows.size() + " rows");
                                 calculateFinalPositions();
                                 backupMergedMatrix();
                                 renderRows();
@@ -1133,7 +1097,7 @@ public class MergedFragment extends Fragment {
                             // Cells floor(N/2)+1 to N: ADD a new participant
                             int newNr = rows.size() + 1;
                             rows.add(new Row(newNr, "", 0, 0, 0, 0, 0, 0, null));
-                            android.util.Log.i("MergedFragment", "Added participant, now " + rows.size() + " rows");
+                            // android.util.Log.i("MergedFragment", "Added participant, now " + rows.size() + " rows");
                             backupMergedMatrix();
                             renderRows();
                         }
@@ -1173,6 +1137,7 @@ public class MergedFragment extends Fragment {
                                 if (row.name == null || row.name.trim().isEmpty()) {
                                     rows.remove(rowIdx);
                                     calculateFinalPositions();
+                                    backupMergedMatrix();
                                     renderRows();
                                     return;
                                 }
@@ -1258,14 +1223,16 @@ public class MergedFragment extends Fragment {
             }
             if (h.equals("P")) {
                 tv.setOnLongClickListener(v -> {
-                    sortRowsByP();
+                    boolean asc = toggleSortRowsByP();
+                    backupMergedMatrix();
                     renderRows();
                     return true;
                 });
             }
             if (h.equals("FinalPos")) {
                 tv.setOnLongClickListener(v -> {
-                    sortRowsByFinalPos();
+                    boolean asc = toggleSortRowsByFinalPos();
+                    backupMergedMatrix();
                     renderRows();
                     return true;
                 });
@@ -1275,27 +1242,54 @@ public class MergedFragment extends Fragment {
         return headerRow;
     }
 
-    // Sorts the rows by P (position) in ascending order
-    private void sortRowsByP() {
+    private boolean toggleSortRowsByName() {
+        final boolean asc = nameSortAscending;
         java.util.Collections.sort(rows, new java.util.Comparator<Row>() {
             @Override
             public int compare(Row a, Row b) {
-                return Integer.compare(a.p, b.p);
+                String an = a != null && a.name != null ? a.name.trim() : "";
+                String bn = b != null && b.name != null ? b.name.trim() : "";
+                if (an.isEmpty() && bn.isEmpty()) return 0;
+                if (an.isEmpty()) return 1;
+                if (bn.isEmpty()) return -1;
+                return asc ? an.compareToIgnoreCase(bn) : bn.compareToIgnoreCase(an);
             }
         });
+        nameSortAscending = !nameSortAscending;
+        return asc;
     }
 
-    // Sorts the rows by FinalPos in ascending order
-    private void sortRowsByFinalPos() {
+    private boolean toggleSortRowsByP() {
+        final boolean asc = pSortAscending;
         java.util.Collections.sort(rows, new java.util.Comparator<Row>() {
             @Override
             public int compare(Row a, Row b) {
-                if (a.finalPos == null && b.finalPos == null) return 0;
-                if (a.finalPos == null) return 1;
-                if (b.finalPos == null) return -1;
-                return Integer.compare(a.finalPos, b.finalPos);
+                int cmp = asc ? Integer.compare(a.p, b.p) : Integer.compare(b.p, a.p);
+                if (cmp != 0) return cmp;
+                String an = a != null && a.name != null ? a.name.trim() : "";
+                String bn = b != null && b.name != null ? b.name.trim() : "";
+                return an.compareToIgnoreCase(bn);
             }
         });
+        pSortAscending = !pSortAscending;
+        return asc;
+    }
+
+    private boolean toggleSortRowsByFinalPos() {
+        final boolean asc = finalPosSortAscending;
+        java.util.Collections.sort(rows, new java.util.Comparator<Row>() {
+            @Override
+            public int compare(Row a, Row b) {
+                Integer af = a != null ? a.finalPos : null;
+                Integer bf = b != null ? b.finalPos : null;
+                if (af == null && bf == null) return 0;
+                if (af == null) return 1;
+                if (bf == null) return -1;
+                return asc ? Integer.compare(af, bf) : Integer.compare(bf, af);
+            }
+        });
+        finalPosSortAscending = !finalPosSortAscending;
+        return asc;
     }
 
     private void addCell(TableRow tr, String value, boolean editable) {
@@ -1644,8 +1638,8 @@ public class MergedFragment extends Fragment {
         dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
         dialog.show();
         
-        android.util.Log.i("MergedFragment", "QR OUT: " + qrSize + "px (" + moduleCount + " modules, " + 
-            (qrSize/moduleCount) + "px/module), " + compressed.length() + " bytes");
+        // android.util.Log.i("MergedFragment", "QR OUT: " + qrSize + "px (" + moduleCount + " modules, " +
+        //     (qrSize/moduleCount) + "px/module), " + compressed.length() + " bytes");
     }
     
     // Start QR scanner - show dialog to choose camera or gallery
@@ -1713,7 +1707,7 @@ public class MergedFragment extends Fragment {
     
     // Handle scanned QR code result - adds to existing data
     private void handleQrScanResult(String scannedData) {
-        android.util.Log.i("MergedFragment", "QR ADD: Received " + scannedData.length() + " bytes");
+        // android.util.Log.i("MergedFragment", "QR ADD: Received " + scannedData.length() + " bytes");
         
         // Decompress the data
         String csvData = decompressData(scannedData);
@@ -1764,7 +1758,7 @@ public class MergedFragment extends Fragment {
             backupMergedMatrix();
             
             android.widget.Toast.makeText(getContext(), "Added " + addedCount + " participants (total: " + rows.size() + ")", android.widget.Toast.LENGTH_SHORT).show();
-            android.util.Log.i("MergedFragment", "QR ADD: Successfully added " + addedCount + " rows, total now " + rows.size());
+            // android.util.Log.i("MergedFragment", "QR ADD: Successfully added " + addedCount + " rows, total now " + rows.size());
             
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Failed to parse QR data", e);
@@ -1781,3 +1775,4 @@ public class MergedFragment extends Fragment {
         }
     }
 }
+

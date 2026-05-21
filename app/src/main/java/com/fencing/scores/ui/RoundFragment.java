@@ -530,22 +530,15 @@ public class RoundFragment extends Fragment {
         scoresViewModel.switchToRound(roundCode);
         // Only restore automatically if crash detected
         // On normal start, try to restore from backup if it exists (to preserve names/bouts)
-        android.util.Log.d("RoundFragment", "onViewCreated: crashDetected=" + com.fencing.scores.MainActivity.crashDetected);
-        if (com.fencing.scores.MainActivity.crashDetected) {
-            android.util.Log.d("RoundFragment", "Restoring from backup due to crash");
+            if (com.fencing.scores.MainActivity.crashDetected) {
             restoreFromDefaultBackupCompat();
         } else {
             // On normal start, avoid restoring stale backup data for newly created Round2+ pages.
             if (roundCode == 1) {
                 java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), getRoundBackupFilename());
                 if (backupFile.exists() && backupFile.length() > 0) {
-                    android.util.Log.d("RoundFragment", "Normal start - restoring backup for Round1");
                     restoreFromDefaultBackupCompat();
-                } else {
-                    android.util.Log.d("RoundFragment", "Normal start - no Round1 backup, using in-memory state");
                 }
-            } else {
-                android.util.Log.d("RoundFragment", "Normal start - Round" + roundCode + " uses in-memory state only");
             }
         }
         // Observe changes and update matrix (only when this fragment is visible/resumed)
@@ -631,7 +624,7 @@ public class RoundFragment extends Fragment {
         int screenHeight = metrics.heightPixels;
         int headerRows = 1;
         int totalRows = nrPart + headerRows;
-        int cellHeight = (int) (screenHeight * 0.98f / totalRows); // Use 98% of screen height
+        int cellHeight = (int) (screenHeight * 1f / totalRows); // Use 100% of screen height
         TableRow headerRow = createHeaderRow(nrPart, colorIdx, cellHeight);
         tableLayout.addView(headerRow);
         int lastEmptyP = -1;
@@ -657,7 +650,7 @@ public class RoundFragment extends Fragment {
         // Help text logic will be refactored into a reusable method below
     }
 
-    // When the remaining unplayed valid bouts are <= 15%, highlight those missing bouts.
+    // When the remaining unplayed valid bouts are <= 25%, highlight those missing bouts.
     private boolean shouldHighlightRemainingBouts(String[] participantNames, int[][] boutResults, int nrPart) {
         int totalValidBouts = 0;
         int missingBouts = 0;
@@ -683,7 +676,7 @@ public class RoundFragment extends Fragment {
         }
         if (totalValidBouts == 0 || missingBouts == 0) return false;
         double remainingPercent = (missingBouts * 100.0) / totalValidBouts;
-        return remainingPercent <= 15.0;
+        return remainingPercent <= 25.0;
     }
 
     private TableRow createHeaderRow(int nrPart) {
@@ -745,7 +738,6 @@ public class RoundFragment extends Fragment {
                     saveBackupToDocuments();
                     // Update the matrix after sorting
                     createMatrix(getView());
-                    android.widget.Toast.makeText(getContext(), appliedAscending ? "Pos order: increasing" : "Pos order: decreasing", android.widget.Toast.LENGTH_SHORT).show();
                     return true;
                 });
             }
@@ -938,7 +930,6 @@ public class RoundFragment extends Fragment {
             boolean appliedAscending = toggleNameSortAndReload();
             saveBackupToDocuments();
             createMatrix(getView());
-            android.widget.Toast.makeText(getContext(), appliedAscending ? "Name order: A-Z" : "Name order: Z-A", android.widget.Toast.LENGTH_SHORT).show();
             return true;
         });
         row.addView(nameCell);
@@ -998,7 +989,7 @@ public class RoundFragment extends Fragment {
                         boutBgColor = mixWithWhite(currentPair[0]);
                     }
                 }
-                // If valid bouts are almost finished (<=15% missing), mark still-missing valid bouts in gray.
+                // If valid bouts are almost finished (<=25% missing), mark still-missing valid bouts in gray.
                 if (highlightRemainingBouts && nameValid && !(score >= 0 && oppScore >= 0)) {
                     boutBgColor = 0xFFB0B0B0;
                 }
@@ -1170,7 +1161,6 @@ public class RoundFragment extends Fragment {
             // Save backup after sorting to persist new order
             saveBackupToDocuments();
             createMatrix(getView());
-            android.widget.Toast.makeText(getContext(), appliedAscending ? "Pos order: increasing" : "Pos order: decreasing", android.widget.Toast.LENGTH_SHORT).show();
             return true;
         });
         row.addView(pCell);
@@ -1376,9 +1366,7 @@ public class RoundFragment extends Fragment {
                     requireContext().getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "");
                 java.io.File crashFile = new java.io.File(documentsDir, "CRASH.txt");
                 boolean existed = crashFile.exists();
-                boolean deleted = false;
-                if (existed) deleted = crashFile.delete();
-                android.util.Log.d("RoundFragment", "QUIT: deleteCrashFile path=" + crashFile.getAbsolutePath() + ", existed=" + existed + ", deleted=" + deleted);
+                if (existed) crashFile.delete();
             } catch (Exception e) {
                 android.util.Log.e("RoundFragment", "QUIT: Error deleting crash file: " + e.getMessage());
             }
@@ -1395,8 +1383,7 @@ public class RoundFragment extends Fragment {
                 for (String backupName : backupFiles) {
                     java.io.File f = new java.io.File(filesDir, backupName);
                     if (f.exists()) {
-                        boolean del = f.delete();
-                        android.util.Log.d("RoundFragment", "QUIT: delete " + backupName + " deleted=" + del);
+                        f.delete();
                     }
                 }
             } catch (Exception e) {

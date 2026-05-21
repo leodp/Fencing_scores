@@ -142,6 +142,12 @@ The generated APKs will be located at:
 - Round Name header now shows `Round Nr: X`
 - Click and long-press both open the `Rounds Nr. in the pool` selector
 
+## Merged Sorting
+
+- Long-press `Name` cells toggles name order `A-Z` / `Z-A`
+- Long-press `P` cells toggles P order increasing / decreasing
+- Long-press `FinalPos` cells toggles FinalPos order increasing / decreasing
+
 ## Ranking System
 
 Participants are ranked by:
@@ -166,4 +172,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V1.8** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V2.0** — See [CHANGELOG.md](CHANGELOG.md) for full history.
