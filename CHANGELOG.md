@@ -1,5 +1,44 @@
 # Changelog
 
+## [V2.0 - 2026-05-22]
+
+### KO Ranking - Correct Positions for Unplayed Matches
+- Simplified repechage ranking: rank by main bracket advancement level, actual loss status, repechage advancement level, and FinalPos — no position locking or bracket-path simulation
+- Same advancement logic applied consistently in both main bracket and repechage trees: winners of round N who haven't played round N+1 rank above losers of round N
+- Participants who won actual matches rank above those who lost, regardless of bracket path; within the same level, FinalPos determines order
+- In partially-played rounds, actual losers rank below assumed losers (participants whose match wasn't played)
+- Repechage tree actual results differentiate losers at the same main bracket level (more repechage wins = better rank)
+- Fixed standard KO bug where Third Place match winner could rank above finalists when the Final was not yet played
+- Fixed standard KO to assume better FinalPos wins for unplayed matches (ranking only, no tree modification)
+- Ranking changes are calculation-only: bracket trees and match names are never modified by ranking assumptions
+
+### KO CSV Export - Complete Data for All Modes
+- Fixed CSV SAVE export to include `#META` header line (koSize, repechage, modus) for reliable mode detection on import
+- Fixed CSV SAVE export for Quick KO and Mix-Rounds modes (koModus >= 2) which previously exported empty files because group data was not written
+- All KO pulldown choices now produce complete CSV files with all executed matches
+
+### KO CSV Import - Auto-Detection of KO Mode
+- Added automatic detection of Quick KO / Mix-Rounds modes from CSV tree IDs (G-prefix) when no `#META` line is present
+- Group size is inferred from round-1 match count to determine the correct modus (Quick KO 1:2, 1-4, or 1-8)
+- Added CSV-based group reconstruction fallback: groups can be rebuilt from CSV data alone when Merged backup is unavailable
+
+### KO with Repechage - Name Placement and Propagation Fix
+- Fixed semifinal winner propagation in repechage mode: winners now correctly flow from semifinals to the final match (previously the propagation loop stopped one round too early)
+- Fixed loser determination to use score-based detection (score1 vs score2) instead of relying solely on winner name string comparison, preventing wrong names in repechage trees when name formats differ
+- Eliminated redundant double-propagation of losers to repechage trees during CSV import, reducing the risk of stale data overwrites
+- Fixed repechage ranking: a participant who won in a primary repechage tree (e.g. R1L) now correctly ranks above one who won only in a deeper sub-bracket (e.g. R1L2L), even if both have the same number of repechage wins — the depth of the shallowest tree where they won is used as a tiebreaker (fewer 'L' letters in tree ID = shallower = better rank)
+
+## [V2.1 - 2026-05-22]
+
+### KO with Repechage - Ranking Consistency Fix
+- Fixed repechage ranking so positions 1 and 2 are now locked to the main final outcome: winner stays 1st, final loser stays 2nd
+- Fixed repechage ranking to derive main-bracket winner/loser flow from actual match results during ranking calculation, preventing participant-name drift when cached winner fields are stale
+- Fixed repechage position assignment so finalists cannot be overwritten by later semifinal-loser/repechage assignments
+
+### KO CSV REPLACE - Legacy Repechage Detection
+- Fixed import of KO CSV files without `#META` by auto-detecting repechage mode when repechage tree rows (`R1...` trees other than `R1`) are present
+- Repechage tree rows in legacy files are now loaded and ranked correctly instead of being silently ignored
+
 ## [V2.0 - 2026-05-21]
 
 ### MRDebug5 - KO and Final Ranking Fixes

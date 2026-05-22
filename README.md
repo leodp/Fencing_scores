@@ -21,6 +21,7 @@ A comprehensive Android application for managing fencing tournament scores, from
 - Bout order suggestions
 - Help dialog with LOAD, RESTORE, SAVE, QR OUT, QR IN, QUIT buttons
 - Color-coded result columns (cycling themes)
+- Highlighting missing bouts when 25% or less results are missing
 
 ### Merged (Rankings Combination)
 - Combine results from multiple pools
@@ -44,6 +45,7 @@ A comprehensive Android application for managing fencing tournament scores, from
 - Buttons: RELOAD, REPLACE, RESTORE CRASH, QR OUT, QR IN, SAVE
 - Support for 8, 16, 32, 64 participant brackets (auto-padded with Empty)
 - Color themes synced with Round page
+- Repechage reference handling keeps winner/loser names aligned even when some matches are still unplayed (strict winner-ref matching, unresolved refs remain placeholders)
 
 ### Final (Results)
 - 3-column final rankings display

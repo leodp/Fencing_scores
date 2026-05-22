@@ -793,12 +793,16 @@ public class KOFragment extends Fragment {
     private void buildRepechageSubTreesNew(RepechageTree parentTree, int totalParticipants, String parentHistory) {
         int numRounds = parentTree.rounds.size();
         
+        // Effective position range starts at the full parent range and shrinks upward
+        // as each round's losers are assigned the bottom half of what remains.
+        int effectivePosStart = parentTree.positionStart;
+        int effectivePosEnd = parentTree.positionEnd;
+
         // For each round except the last, losers form a sub-tree
         for (int r = 0; r < numRounds - 1; r++) {
             List<Match> round = parentTree.rounds.get(r);
             int numLosers = round.size();
-            
-            if (numLosers < 2) continue; // Need at least 2 losers for a tree
+
             
             // Build the new tree's ID based on history
             // Column number for this loser tree = startColumn of parent + r + 1
@@ -836,16 +840,18 @@ public class KOFragment extends Fragment {
             // Calculate position range: losers compete for worse positions in parent's range
             // If parent handles positions posStart to posEnd, and this is losers from round r,
             // they compete for the worse half of remaining positions
-            int parentPosStart = parentTree.positionStart;
-            int parentPosEnd = parentTree.positionEnd;
-            int remainingRange = parentPosEnd - parentPosStart + 1;
-            int halfRange = remainingRange / 2;
-            
-            // Losers from earlier rounds get worse positions
-            // R1 losers: worst positions, R2 losers: better than R1 losers, etc.
-            int roundDivisor = 1 << (numRounds - r - 1); // For R1 of parent with 4 rounds: 8
-            subTree.positionStart = parentPosStart + remainingRange - (remainingRange / roundDivisor);
-            subTree.positionEnd = parentPosEnd;
+            // Position range: each round's losers get the bottom half of the remaining effective range.
+            // effectivePosStart/effectivePosEnd shrink upward after each sub-tree is assigned.
+            if (numLosers < 2) {
+                // Skip sub-tree creation but still shrink effective range so later rounds rank correctly
+                int rangeSize = effectivePosEnd - effectivePosStart + 1;
+                effectivePosEnd = effectivePosStart + rangeSize / 2 - 1;
+                continue;
+            }
+            int rangeSize = effectivePosEnd - effectivePosStart + 1;
+            subTree.positionStart = effectivePosStart + rangeSize / 2;
+            subTree.positionEnd = effectivePosEnd;
+            effectivePosEnd = effectivePosStart + rangeSize / 2 - 1;
             
             // Build rounds for this sub-tree
             int matchCount = numLosers;
@@ -1353,6 +1359,61 @@ public class KOFragment extends Fragment {
         return seeds;
     }
     
+    // Rebuild KOGroups directly from CSV lines (fallback when Merged is unavailable)
+    private void rebuildGroupsFromCsvLines(List<String> lines) {
+        // Collect unique group IDs and their round-1 participants
+        java.util.Map<String, java.util.List<String>> groupParticipants = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> groupMaxRound = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> groupMaxMatch = new java.util.LinkedHashMap<>();
+        
+        for (String line : lines) {
+            if (line == null || line.startsWith("#") || line.startsWith("Tree,")) continue;
+            String[] parts = line.split(",", -1);
+            if (parts.length < 7) continue;
+            String gId = parts[0].trim();
+            if (!gId.startsWith("G")) continue;
+            
+            int roundNum, matchNum;
+            try {
+                roundNum = Integer.parseInt(parts[1].trim());
+                matchNum = Integer.parseInt(parts[2].trim());
+            } catch (Exception e) { continue; }
+            
+            groupMaxRound.merge(gId, roundNum, Math::max);
+            groupMaxMatch.merge(gId, matchNum, Math::max);
+            
+            // Collect round-1 participant names
+            if (roundNum == 1) {
+                if (!groupParticipants.containsKey(gId)) {
+                    groupParticipants.put(gId, new java.util.ArrayList<>());
+                }
+                java.util.List<String> pList = groupParticipants.get(gId);
+                String p1 = parts[3].trim();
+                String p2 = parts[5].trim();
+                if (!p1.isEmpty() && !p1.equals("Empty")) pList.add(p1);
+                if (!p2.isEmpty() && !p2.equals("Empty")) pList.add(p2);
+            }
+        }
+        
+        int posStart = 1;
+        for (String gId : groupParticipants.keySet()) {
+            java.util.List<String> names = groupParticipants.get(gId);
+            if (names.isEmpty()) continue;
+            
+            // Pad to next power of 2
+            int n = 1;
+            while (n < names.size()) n *= 2;
+            while (names.size() < n) names.add("Empty");
+            
+            int posEnd = posStart + names.size() - 1;
+            String title = gId;
+            KOGroup group = new KOGroup(gId, title, posStart, posEnd, names.toArray(new String[0]));
+            koGroups.add(group);
+            buildGroupKOTree(group);
+            posStart = posEnd + 1;
+        }
+    }
+    
     // Auto-advance Empty matches within a KOGroup
     private void autoAdvanceEmptyMatchesInGroup(KOGroup group) {
         if (group.rounds.isEmpty()) return;
@@ -1667,8 +1728,35 @@ public class KOFragment extends Fragment {
                 }
             }
             java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(os);
+            // Write metadata line for reliable mode detection on import
+            int koSizeMeta;
+            if (koModus >= 2 && !koGroups.isEmpty()) {
+                int total = 0;
+                for (KOGroup g : koGroups) total += g.participants.length;
+                koSizeMeta = total;
+            } else {
+                koSizeMeta = koRounds.isEmpty() ? 8 : koRounds.get(0).size() * 2;
+            }
+            writer.write("#META," + koSizeMeta + "," + koRepechage + "," + koModus + "\n");
             writer.write("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
             
+            if (koModus >= 2 && !koGroups.isEmpty()) {
+                // Write group data for Quick KO / Mix-Rounds modes
+                for (KOGroup group : koGroups) {
+                    for (int r = 0; r < group.rounds.size(); r++) {
+                        for (Match m : group.rounds.get(r)) {
+                            String p1Display = m.p1;
+                            String p2Display = m.p2;
+                            String winnerDisplay = "";
+                            if (m.score1 >= 0 && m.score2 >= 0) {
+                                if (m.score1 > m.score2) winnerDisplay = p1Display;
+                                else if (m.score2 > m.score1) winnerDisplay = p2Display;
+                            }
+                            writer.write(group.groupId+","+(r+1)+","+(m.matchIdx+1)+","+p1Display+","+(m.score1>=0?m.score1:"")+","+p2Display+","+(m.score2>=0?m.score2:"")+","+winnerDisplay+"\n");
+                        }
+                    }
+                }
+            } else {
             // Write main bracket (R1)
             for (int r = 0; r < koRounds.size(); r++) {
                 android.util.Log.d("KOFragment", "SAVE CSV: Round " + r + " has " + koRounds.get(r).size() + " matches");
@@ -1709,6 +1797,7 @@ public class KOFragment extends Fragment {
                     }
                 }
             }
+            } // end else (standard KO modes)
             
             writer.close();
             os.close();
@@ -1805,7 +1894,10 @@ public class KOFragment extends Fragment {
         final java.util.Map<String, Integer> nameToFinalPos = loadFinalPosFromMerged();
         
         // Handle repechage mode differently
-        if (koRepechage && !losersRounds.isEmpty()) {
+        if (koRepechage) {
+            if (losersRounds.isEmpty() && !allRepechageTrees.isEmpty()) {
+                rebuildLosersRoundsFromRepechageTrees();
+            }
             return calculateRepechageRankings(participantNames, nameToFinalPos);
         }
         // Standard KO ranking must include all participants even when rounds are incomplete.
@@ -1841,6 +1933,8 @@ public class KOFragment extends Fragment {
         }
 
         int totalRounds = finalRoundIndex + 1;
+        // Track ranking-assumed winners for W-ref resolution in subsequent rounds
+        java.util.Map<String, String> rankingWinners = new java.util.HashMap<>();
         for (int r = 0; r <= finalRoundIndex && r < koRounds.size(); r++) {
             List<Match> round = koRounds.get(r);
             boolean isFinal = (r == finalRoundIndex);
@@ -1850,6 +1944,21 @@ public class KOFragment extends Fragment {
                 String p2Ref = resolveKORef(m.p2, koRounds, r);
                 String p1Name = getKOName(p1Ref, participantNames);
                 String p2Name = getKOName(p2Ref, participantNames);
+                // Resolve unresolved W-refs via rankingWinners from previous rounds
+                if (!allParticipants.contains(p1Name) && m.p1 != null && m.p1.startsWith("W") && r > 0) {
+                    try {
+                        int prevMatchIdx = Integer.parseInt(m.p1.substring(1)) - 1;
+                        String resolved = rankingWinners.get((r - 1) + "." + prevMatchIdx);
+                        if (resolved != null && allParticipants.contains(resolved)) p1Name = resolved;
+                    } catch (NumberFormatException e) {}
+                }
+                if (!allParticipants.contains(p2Name) && m.p2 != null && m.p2.startsWith("W") && r > 0) {
+                    try {
+                        int prevMatchIdx = Integer.parseInt(m.p2.substring(1)) - 1;
+                        String resolved = rankingWinners.get((r - 1) + "." + prevMatchIdx);
+                        if (resolved != null && allParticipants.contains(resolved)) p2Name = resolved;
+                    } catch (NumberFormatException e) {}
+                }
 
                 if ((p1Name == null || p1Name.equals("Empty")) && (p2Name == null || p2Name.equals("Empty"))) {
                     continue;
@@ -1857,39 +1966,69 @@ public class KOFragment extends Fragment {
 
                 String winner = getMatchWinner(m, participantNames, r);
                 if (winner == null || winner.equals("Empty")) {
-                    continue;
+                    // For ranking only: assume participant with better FinalPos wins.
+                    // Do NOT modify the tree (m.winner stays unchanged).
+                    boolean p1Real = allParticipants.contains(p1Name);
+                    boolean p2Real = allParticipants.contains(p2Name);
+                    if (p1Real && p2Real) {
+                        int pos1 = nameToFinalPos.getOrDefault(p1Name, 999);
+                        int pos2 = nameToFinalPos.getOrDefault(p2Name, 999);
+                        winner = (pos1 <= pos2) ? p1Name : p2Name;
+                    } else if (p1Real) {
+                        winner = p1Name;
+                    } else if (p2Real) {
+                        winner = p2Name;
+                    } else {
+                        continue;
+                    }
                 }
+                // Track winner for resolution in subsequent rounds
+                rankingWinners.put(r + "." + m.matchIdx, winner);
 
                 String loser = winner.equals(p1Name) ? p2Name : p1Name;
                 if (isFinal) {
                     progressScore.put(winner, totalRounds * 2 + 1);
-                    if (loser != null && !loser.equals("Empty")) {
+                    if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
                         progressScore.put(loser, totalRounds * 2);
                     }
                 } else {
                     progressScore.put(winner, (r + 1) * 2 + 1);
-                    if (loser != null && !loser.equals("Empty")) {
+                    if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
                         progressScore.put(loser, r * 2);
                     }
                 }
             }
         }
 
-        // If a Third Place match exists and is decided, enforce 3rd/4th ordering from that result.
+        // If a Third Place match exists, enforce 3rd/4th ordering from result or assumption.
         int thirdPlaceRoundIndex = finalRoundIndex + 1;
         if (thirdPlaceRoundIndex < koRounds.size() && koRounds.get(thirdPlaceRoundIndex).size() == 1) {
             Match thirdPlace = koRounds.get(thirdPlaceRoundIndex).get(0);
+            String p1Ref = resolveKORef(thirdPlace.p1, koRounds, thirdPlaceRoundIndex);
+            String p2Ref = resolveKORef(thirdPlace.p2, koRounds, thirdPlaceRoundIndex);
+            String p1Name = getKOName(p1Ref, participantNames);
+            String p2Name = getKOName(p2Ref, participantNames);
             String thirdWinner = getMatchWinner(thirdPlace, participantNames, thirdPlaceRoundIndex);
+            if (thirdWinner == null || thirdWinner.equals("Empty")) {
+                // Assume better FinalPos wins for ranking
+                boolean p1Real = allParticipants.contains(p1Name);
+                boolean p2Real = allParticipants.contains(p2Name);
+                if (p1Real && p2Real) {
+                    int pos1 = nameToFinalPos.getOrDefault(p1Name, 999);
+                    int pos2 = nameToFinalPos.getOrDefault(p2Name, 999);
+                    thirdWinner = (pos1 <= pos2) ? p1Name : p2Name;
+                } else if (p1Real) {
+                    thirdWinner = p1Name;
+                } else if (p2Real) {
+                    thirdWinner = p2Name;
+                }
+            }
             if (thirdWinner != null && !thirdWinner.equals("Empty")) {
-                String p1Ref = resolveKORef(thirdPlace.p1, koRounds, thirdPlaceRoundIndex);
-                String p2Ref = resolveKORef(thirdPlace.p2, koRounds, thirdPlaceRoundIndex);
-                String p1Name = getKOName(p1Ref, participantNames);
-                String p2Name = getKOName(p2Ref, participantNames);
                 String thirdLoser = thirdWinner.equals(p1Name) ? p2Name : p1Name;
                 int thirdWinnerScore = Math.max(2, totalRounds * 2 - 1);
                 int thirdLoserScore = Math.max(1, totalRounds * 2 - 2);
                 progressScore.put(thirdWinner, thirdWinnerScore);
-                if (thirdLoser != null && !thirdLoser.equals("Empty")) {
+                if (thirdLoser != null && !thirdLoser.equals("Empty") && allParticipants.contains(thirdLoser)) {
                     progressScore.put(thirdLoser, thirdLoserScore);
                 }
             }
@@ -2037,86 +2176,146 @@ public class KOFragment extends Fragment {
         return rankings;
     }
     
-    // Calculate rankings for repechage mode with parallel consolation trees
+    // Calculate rankings for repechage mode with parallel consolation trees.
+    // Algorithm: rank by main bracket advancement level, then loss status, then
+    // repechage wins, then FinalPos. No position locking or bracket-path simulation.
     private java.util.List<String> calculateRepechageRankings(String[] participantNames, java.util.Map<String, Integer> nameToFinalPos) {
         java.util.List<String> rankings = new java.util.ArrayList<>();
         
-        // Map participant name to their final position
-        java.util.Map<String, Integer> nameToPosition = new java.util.HashMap<>();
-        
-        int totalParticipants = participantNames.length;
+        // Collect all real participants
+        java.util.Set<String> allParticipants = new java.util.LinkedHashSet<>();
         for (String name : participantNames) {
-            if (name != null && !name.equals("Empty")) {
-                nameToPosition.put(name, totalParticipants); // Default to last
+            if (name != null && !name.trim().isEmpty() && !name.equals("Empty")) {
+                allParticipants.add(name);
+            }
+        }
+        if (allParticipants.isEmpty()) return rankings;
+        
+        // Track each participant's state
+        // mainLevel: highest main bracket round WON (0 = didn't win any round)
+        java.util.Map<String, Integer> mainLevel = new java.util.HashMap<>();
+        java.util.Map<String, Boolean> actuallyLost = new java.util.HashMap<>();
+        // repechageLevel: highest repechage round WON (round index is local to each tree)
+        java.util.Map<String, Integer> repechageLevel = new java.util.HashMap<>();
+        java.util.Map<String, Boolean> repechageActuallyLost = new java.util.HashMap<>();
+        // repechageMinWinTreeDepth: depth (L-count of treeId) of the SHALLOWEST tree where
+        // they won a match. Lower = won in a higher-level bracket = better rank.
+        // Initialised to MAX_VALUE (no win yet).
+        java.util.Map<String, Integer> repechageMinWinTreeDepth = new java.util.HashMap<>();
+
+        for (String name : allParticipants) {
+            mainLevel.put(name, 0);
+            actuallyLost.put(name, false);
+            repechageLevel.put(name, 0);
+            repechageActuallyLost.put(name, false);
+            repechageMinWinTreeDepth.put(name, Integer.MAX_VALUE);
+        }
+        
+        // 1. Process main bracket rounds - only actual results count
+        for (int r = 0; r < koRounds.size(); r++) {
+            for (Match m : koRounds.get(r)) {
+                String p1Ref = resolveKORef(m.p1, koRounds, r);
+                String p2Ref = resolveKORef(m.p2, koRounds, r);
+                String p1Name = getKOName(p1Ref, participantNames);
+                String p2Name = getKOName(p2Ref, participantNames);
+                
+                String winner = getMatchWinner(m, participantNames, r);
+                if (winner == null || winner.equals("Empty")) continue;
+                if (!allParticipants.contains(winner)) continue;
+                
+                mainLevel.put(winner, r + 1);
+                String loser = winner.equals(p1Name) ? p2Name : p1Name;
+                if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
+                    actuallyLost.put(loser, true);
+                }
             }
         }
         
-        // 1. Process main bracket to determine positions 1-2 (and track losers)
-        java.util.Map<Integer, java.util.List<String>> mainRoundLosers = new java.util.HashMap<>();
-        
-        int numMainRounds = koRounds.size();
-        for (int r = 0; r < numMainRounds; r++) {
-            List<Match> round = koRounds.get(r);
-            mainRoundLosers.put(r, new java.util.ArrayList<>());
-            
-            for (Match m : round) {
-                if (m.winner != null && !m.winner.equals("Empty")) {
-                    String p1Ref = resolveKORef(m.p1, koRounds, r);
-                    String p2Ref = resolveKORef(m.p2, koRounds, r);
-                    String p1Name = getKOName(p1Ref, participantNames);
-                    String p2Name = getKOName(p2Ref, participantNames);
+        // 2. Process repechage tree actual results (same advancement logic as main bracket)
+        for (RepechageTree tree : allRepechageTrees) {
+            if (tree.treeId.equals("R1")) continue;
+            int treeDepth = countRepechageTreeDepth(tree.treeId);
+            for (int r = 0; r < tree.rounds.size(); r++) {
+                for (Match m : tree.rounds.get(r)) {
+                    String p1Name = resolveRepechageParticipant(m.p1, participantNames, tree);
+                    String p2Name = resolveRepechageParticipant(m.p2, participantNames, tree);
                     
-                    String loser = m.winner.equals(p1Name) ? p2Name : p1Name;
-                    if (!loser.equals("Empty")) {
-                        mainRoundLosers.get(r).add(loser);
+                    String winner = null;
+                    if (m.score1 > m.score2 && allParticipants.contains(p1Name)) {
+                        winner = p1Name;
+                    } else if (m.score2 > m.score1 && allParticipants.contains(p2Name)) {
+                        winner = p2Name;
+                    } else if (m.winner != null && !m.winner.equals("Empty") &&
+                               !m.winner.startsWith("L_") && !m.winner.startsWith("W_") &&
+                               !m.winner.startsWith("ML") && allParticipants.contains(m.winner)) {
+                        winner = m.winner;
                     }
-                    
-                    // Final match
-                    if (r == numMainRounds - 1) {
-                        nameToPosition.put(m.winner, 1);
-                        if (!loser.equals("Empty")) {
-                            nameToPosition.put(loser, 2);
+                    if (winner != null) {
+                        repechageLevel.put(winner, Math.max(repechageLevel.getOrDefault(winner, 0), r + 1));
+                        // Track shallowest tree (lowest depth) in which this participant won
+                        repechageMinWinTreeDepth.put(winner,
+                            Math.min(repechageMinWinTreeDepth.getOrDefault(winner, Integer.MAX_VALUE), treeDepth));
+                        String loser = winner.equals(p1Name) ? p2Name : p1Name;
+                        if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
+                            repechageActuallyLost.put(loser, true);
                         }
                     }
                 }
             }
         }
         
-        // 2. Process each repechage tree to determine positions
-        for (RepechageTree tree : allRepechageTrees) {
-            if (tree.treeId.equals("R1")) continue; // Skip main tree
-            processRepechageTreeRankings(tree, participantNames, nameToPosition, mainRoundLosers);
-        }
-        
-        // 3. Build final rankings from nameToPosition map
-        java.util.List<java.util.Map.Entry<String, Integer>> sortedEntries = 
-            new java.util.ArrayList<>(nameToPosition.entrySet());
-        
-        sortedEntries.sort((a, b) -> {
-            int posA = a.getValue();
-            int posB = b.getValue();
-            if (posA != posB) {
-                return Integer.compare(posA, posB); // Lower position = better
-            }
-            // Tiebreaker: use FinalPos from Merged (lower = better)
-            int mergedPosA = nameToFinalPos.getOrDefault(a.getKey(), 999);
-            int mergedPosB = nameToFinalPos.getOrDefault(b.getKey(), 999);
-            return Integer.compare(mergedPosA, mergedPosB);
+        // 3. Sort: main level DESC, non-losers before losers,
+        //    repechage level DESC, shallowest win tree ASC,
+        //    repechage non-losers before losers, FinalPos ASC
+        java.util.List<String> sorted = new java.util.ArrayList<>(allParticipants);
+        sorted.sort((a, b) -> {
+            int levelA = mainLevel.getOrDefault(a, 0);
+            int levelB = mainLevel.getOrDefault(b, 0);
+            if (levelA != levelB) return Integer.compare(levelB, levelA);
+            
+            boolean lostA = actuallyLost.getOrDefault(a, false);
+            boolean lostB = actuallyLost.getOrDefault(b, false);
+            if (lostA != lostB) return lostA ? 1 : -1;
+            
+            int repLevelA = repechageLevel.getOrDefault(a, 0);
+            int repLevelB = repechageLevel.getOrDefault(b, 0);
+            if (repLevelA != repLevelB) return Integer.compare(repLevelB, repLevelA);
+            
+            // Among same repechage wins: prefer wins in shallower (lower-depth) trees.
+            // Winning in R1L (depth 1) > winning in R1L2L (depth 2).
+            int winDepthA = repechageMinWinTreeDepth.getOrDefault(a, Integer.MAX_VALUE);
+            int winDepthB = repechageMinWinTreeDepth.getOrDefault(b, Integer.MAX_VALUE);
+            if (winDepthA != winDepthB) return Integer.compare(winDepthA, winDepthB);
+            
+            boolean repLostA = repechageActuallyLost.getOrDefault(a, false);
+            boolean repLostB = repechageActuallyLost.getOrDefault(b, false);
+            if (repLostA != repLostB) return repLostA ? 1 : -1;
+            
+            int posA = nameToFinalPos.getOrDefault(a, 999);
+            int posB = nameToFinalPos.getOrDefault(b, 999);
+            return Integer.compare(posA, posB);
         });
         
-        for (java.util.Map.Entry<String, Integer> e : sortedEntries) {
-            if (!e.getKey().equals("Empty")) {
-                rankings.add(e.getKey());
-            }
-        }
-        
+        rankings.addAll(sorted);
         return rankings;
     }
-    
+
+    // Count 'L' characters in a repechage treeId as a measure of bracket depth.
+    // R1L=1, R1W2L=1, R1L2L=2. Lower depth = closer to main bracket = higher rank.
+    private int countRepechageTreeDepth(String treeId) {
+        int count = 0;
+        for (char c : treeId.toCharArray()) {
+            if (c == 'L') count++;
+        }
+        return count;
+    }
+
     // Process a repechage tree to determine rankings for its position range
     private void processRepechageTreeRankings(RepechageTree tree, String[] participantNames,
                                                  java.util.Map<String, Integer> nameToPosition,
-                                                 java.util.Map<Integer, java.util.List<String>> mainRoundLosers) {
+                                                 java.util.Map<Integer, java.util.List<String>> mainRoundLosers,
+                                                 java.util.Set<String> lockedTopPositions,
+                                                 java.util.Map<String, Integer> nameToFinalPos) {
         if (tree.rounds.isEmpty()) return;
         
         int posStart = tree.positionStart;
@@ -2139,17 +2338,47 @@ public class KOFragment extends Fragment {
             java.util.List<String> roundLosers = new java.util.ArrayList<>();
             
             for (Match m : round) {
+                String p1Name = resolveRepechageParticipant(m.p1, participantNames, tree);
+                String p2Name = resolveRepechageParticipant(m.p2, participantNames, tree);
                 String winner = m.winner;
-                if (winner != null && !winner.equals("Empty") && 
-                    !winner.startsWith("L_") && !winner.startsWith("W_") && !winner.startsWith("ML")) {
-                    // Resolve participants
-                    String p1Name = resolveRepechageParticipant(m.p1, participantNames, tree);
-                    String p2Name = resolveRepechageParticipant(m.p2, participantNames, tree);
-                    
+
+                if (winner == null || winner.equals("Empty") || winner.startsWith("L_") || winner.startsWith("W_") || winner.startsWith("ML")) {
+                    if (m.score1 > m.score2) {
+                        winner = p1Name;
+                    } else if (m.score2 > m.score1) {
+                        winner = p2Name;
+                    }
+                    if (winner != null && !winner.equals("Empty") && !winner.startsWith("L_") && !winner.startsWith("W_") && !winner.startsWith("ML")) {
+                        m.winner = winner;
+                    }
+                }
+
+                boolean resolved = winner != null && !winner.equals("Empty") && 
+                    !winner.startsWith("L_") && !winner.startsWith("W_") && !winner.startsWith("ML");
+
+                if (!resolved) {
+                    // For ranking only: assume participant with better FinalPos wins.
+                    boolean p1Real = nameToPosition.containsKey(p1Name) && !isPlaceholderName(p1Name);
+                    boolean p2Real = nameToPosition.containsKey(p2Name) && !isPlaceholderName(p2Name);
+                    if (p1Real && p2Real) {
+                        int pos1 = nameToFinalPos.getOrDefault(p1Name, 999);
+                        int pos2 = nameToFinalPos.getOrDefault(p2Name, 999);
+                        winner = (pos1 <= pos2) ? p1Name : p2Name;
+                        resolved = true;
+                    } else if (p1Real) {
+                        winner = p1Name;
+                        resolved = true;
+                    } else if (p2Real) {
+                        winner = p2Name;
+                        resolved = true;
+                    }
+                }
+
+                if (resolved) {
                     String loser = winner.equals(p1Name) ? p2Name : p1Name;
-                    
-                    if (!winner.equals("Empty")) roundWinners.add(winner);
-                    if (!loser.equals("Empty")) roundLosers.add(loser);
+
+                    roundWinners.add(winner);
+                    if (loser != null && !loser.equals("Empty") && !isPlaceholderName(loser)) roundLosers.add(loser);
                 }
             }
             
@@ -2162,7 +2391,7 @@ public class KOFragment extends Fragment {
                 for (int i = 0; i < roundLosers.size(); i++) {
                     String loser = roundLosers.get(i);
                     int pos = losersStartPos + i;
-                    if (pos <= posEnd) {
+                    if (pos <= posEnd && !lockedTopPositions.contains(loser)) {
                         nameToPosition.put(loser, pos);
                     }
                 }
@@ -2177,7 +2406,10 @@ public class KOFragment extends Fragment {
         
         // Final winner(s) get best remaining position(s)
         for (int i = 0; i < currentParticipants.size() && posStart + i <= posEnd; i++) {
-            nameToPosition.put(currentParticipants.get(i), posStart + i);
+            String winner = currentParticipants.get(i);
+            if (!lockedTopPositions.contains(winner)) {
+                nameToPosition.put(winner, posStart + i);
+            }
         }
     }
     
@@ -3300,17 +3532,32 @@ public class KOFragment extends Fragment {
             if (matchOffset < 0 || matchOffset >= round.size()) return ref;
             
             Match match = round.get(matchOffset);
-            if (match.winner == null) return ref; // Winner not determined yet
-            
-            // Return the loser (the one who didn't win)
-            String p1Name = treeId.equals("R1") ? 
+
+            // Resolve participant names first
+            String p1Name = treeId.equals("R1") ?
                 getKOName(resolveKORef(match.p1, koRounds, roundIndex), participantNames) :
                 getLosersName(match.p1, participantNames);
             String p2Name = treeId.equals("R1") ?
                 getKOName(resolveKORef(match.p2, koRounds, roundIndex), participantNames) :
                 getLosersName(match.p2, participantNames);
-            
-            return match.winner.equals(p1Name) ? p2Name : p1Name;
+
+            boolean p1Real = p1Name != null && !p1Name.equals("Empty") && !isPlaceholderName(p1Name);
+            boolean p2Real = p2Name != null && !p2Name.equals("Empty") && !isPlaceholderName(p2Name);
+            if (!p1Real || !p2Real) return ref;
+
+            String winner = null;
+            if (match.score1 > match.score2) {
+                winner = p1Name;
+            } else if (match.score2 > match.score1) {
+                winner = p2Name;
+            } else if (match.winner != null && !match.winner.equals("Empty") && !isPlaceholderName(match.winner)) {
+                if (match.winner.equals(p1Name) || match.winner.equals(p2Name)) {
+                    winner = match.winner;
+                }
+            }
+
+            if (winner == null) return ref;
+            return winner.equals(p1Name) ? p2Name : p1Name;
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error resolving loser ref: " + ref, e);
             return ref;
@@ -3362,9 +3609,48 @@ public class KOFragment extends Fragment {
             if (matchOffset < 0 || matchOffset >= round.size()) return ref;
             
             Match match = round.get(matchOffset);
-            return match.winner != null ? match.winner : ref;
+
+            String p1Name = getLosersName(match.p1, participantNames);
+            String p2Name = getLosersName(match.p2, participantNames);
+            boolean p1Real = p1Name != null && !p1Name.equals("Empty") && !isPlaceholderName(p1Name);
+            boolean p2Real = p2Name != null && !p2Name.equals("Empty") && !isPlaceholderName(p2Name);
+
+            if (p1Real && p2Real) {
+                if (match.score1 > match.score2) return p1Name;
+                if (match.score2 > match.score1) return p2Name;
+                if (match.winner != null && !match.winner.equals("Empty") && !isPlaceholderName(match.winner) &&
+                    (match.winner.equals(p1Name) || match.winner.equals(p2Name))) {
+                    return match.winner;
+                }
+            }
+
+            return ref;
         } catch (Exception e) {
             return ref;
+        }
+    }
+
+    // Strict check for winner references in format W_{treeId}_R{round}_{matchIdx}
+    private boolean isWinnerRefForMatch(String ref, String treeId, int roundNum, int matchNum) {
+        if (ref == null || !ref.startsWith("W_")) return false;
+        try {
+            String[] parts = ref.split("_");
+            if (parts.length < 4) return false;
+
+            int rIdx = parts.length - 2;
+            if (!parts[rIdx].startsWith("R")) return false;
+
+            int parsedRound = Integer.parseInt(parts[rIdx].substring(1));
+            int parsedMatch = Integer.parseInt(parts[rIdx + 1]);
+
+            StringBuilder parsedTree = new StringBuilder(parts[1]);
+            for (int i = 2; i < rIdx; i++) {
+                parsedTree.append("_").append(parts[i]);
+            }
+
+            return parsedTree.toString().equals(treeId) && parsedRound == roundNum && parsedMatch == matchNum;
+        } catch (Exception e) {
+            return false;
         }
     }
     
@@ -4664,11 +4950,14 @@ public class KOFragment extends Fragment {
     private void propagateKOWinners() {
         String[] participantNames = getKOParticipantNames();
         if (participantNames == null || koRounds.isEmpty()) return;
-        // Propagate up to but NOT including the Final round - Final should not propagate to Third Place
-        // Third Place uses L refs from Semifinals, not winners from Final
-        int finalRoundIdx = koRounds.size() - 2; // Final is second-to-last (Third Place is last)
-        if (finalRoundIdx < 0) finalRoundIdx = 0;
-        for (int r = 0; r < finalRoundIdx; r++) {
+        // Propagate up to but NOT including the last round that should not feed forward.
+        // In repechage mode (no Third Place), the Final is the last round (koRounds.size()-1)
+        // so we propagate up to koRounds.size()-2 (inclusive), which includes Semifinals.
+        // In non-repechage mode, Third Place is the last round, Final is second-to-last,
+        // so we propagate up to koRounds.size()-3 (inclusive), stopping before the Final.
+        int lastPropRound = koRepechage ? (koRounds.size() - 2) : (koRounds.size() - 3);
+        if (lastPropRound < 0) lastPropRound = 0;
+        for (int r = 0; r <= lastPropRound; r++) {
             List<Match> currentRound = koRounds.get(r);
             List<Match> nextRound = koRounds.get(r + 1);
             for (int m = 0; m < currentRound.size(); m++) {
@@ -4758,9 +5047,19 @@ public class KOFragment extends Fragment {
                 String p2Name = getKOName(p2Ref, participantNames);
                 String loser;
                 if (match.winner.equals("Empty")) {
-                    // Both were Empty, loser is also Empty
                     loser = "Empty";
+                } else if (p1Name.equals("Empty") && !p2Name.equals("Empty")) {
+                    loser = "Empty"; // p2 auto-won, no real loser
+                } else if (!p1Name.equals("Empty") && p2Name.equals("Empty")) {
+                    loser = "Empty"; // p1 auto-won, no real loser
+                } else if (match.score1 > match.score2) {
+                    // p1 won by score, p2 is the loser
+                    loser = p2Name;
+                } else if (match.score2 > match.score1) {
+                    // p2 won by score, p1 is the loser
+                    loser = p1Name;
                 } else {
+                    // Fall back to winner name comparison
                     loser = match.winner.equals(p1Name) ? p2Name : p1Name;
                 }
                 
@@ -4988,46 +5287,13 @@ public class KOFragment extends Fragment {
                         if (winner != null && nextRound != null) {
                             String treeId = tree.treeId;
                             int roundNum = r + 1; // 1-based
-                            String winnerRef = "W_" + treeId + "_R" + roundNum + "_" + (i + 1);
-                            
+                            int sourceMatchNum = i + 1; // 1-based
                             for (Match nextMatch : nextRound) {
-                                // Check p1 reference
-                                if (nextMatch.p1.equals(winnerRef) || 
-                                    (nextMatch.p1.contains("_R" + roundNum + "_") && nextMatch.p1.contains(treeId))) {
-                                    // Parse to verify match index
-                                    String[] parts = nextMatch.p1.split("_");
-                                    if (parts.length >= 2) {
-                                        String lastPart = parts[parts.length - 1];
-                                        try {
-                                            int refIdx = Integer.parseInt(lastPart);
-                                            // Check if this ref points to source match
-                                            int expectedSrc1 = (nextMatch.matchIdx * 2) + 1;
-                                            int expectedSrc2 = (nextMatch.matchIdx * 2) + 2;
-                                            if (refIdx == expectedSrc1 || refIdx == expectedSrc2) {
-                                                if (i + 1 == refIdx) {
-                                                    nextMatch.p1 = winner;
-                                                }
-                                            }
-                                        } catch (Exception e) {}
-                                    }
+                                if (isWinnerRefForMatch(nextMatch.p1, treeId, roundNum, sourceMatchNum)) {
+                                    nextMatch.p1 = winner;
                                 }
-                                // Check p2 reference
-                                if (nextMatch.p2.equals(winnerRef) ||
-                                    (nextMatch.p2.contains("_R" + roundNum + "_") && nextMatch.p2.contains(treeId))) {
-                                    String[] parts = nextMatch.p2.split("_");
-                                    if (parts.length >= 2) {
-                                        String lastPart = parts[parts.length - 1];
-                                        try {
-                                            int refIdx = Integer.parseInt(lastPart);
-                                            int expectedSrc1 = (nextMatch.matchIdx * 2) + 1;
-                                            int expectedSrc2 = (nextMatch.matchIdx * 2) + 2;
-                                            if (refIdx == expectedSrc1 || refIdx == expectedSrc2) {
-                                                if (i + 1 == refIdx) {
-                                                    nextMatch.p2 = winner;
-                                                }
-                                            }
-                                        } catch (Exception e) {}
-                                    }
+                                if (isWinnerRefForMatch(nextMatch.p2, treeId, roundNum, sourceMatchNum)) {
+                                    nextMatch.p2 = winner;
                                 }
                             }
                         }
@@ -5587,6 +5853,51 @@ public class KOFragment extends Fragment {
 
         if (!hasMetaLine) {
             koSize = inferKOSlotCountFromImportedLines(lines);
+            boolean hasGroupTrees = false;
+            boolean hasRepechageTrees = false;
+            java.util.Set<String> groupIds = new java.util.LinkedHashSet<>();
+            for (String line : lines) {
+                if (line == null || line.startsWith("#") || line.startsWith("Tree,")) continue;
+                String[] parts = line.split(",", -1);
+                if (parts.length == 0) continue;
+                String treeId = parts[0].trim();
+                if (treeId.startsWith("G")) {
+                    hasGroupTrees = true;
+                    groupIds.add(treeId);
+                }
+                if (treeId.startsWith("R1") && !treeId.equals("R1")) {
+                    hasRepechageTrees = true;
+                }
+            }
+            if (hasGroupTrees) {
+                // Infer Quick/Mix mode from group structure
+                // Count round-1 matches per group to determine group size
+                java.util.Map<String, Integer> groupR1Matches = new java.util.LinkedHashMap<>();
+                for (String line : lines) {
+                    if (line == null || line.startsWith("#") || line.startsWith("Tree,")) continue;
+                    String[] parts = line.split(",", -1);
+                    if (parts.length < 3) continue;
+                    String gId = parts[0].trim();
+                    if (!gId.startsWith("G")) continue;
+                    if ("1".equals(parts[1].trim())) {
+                        groupR1Matches.merge(gId, 1, Integer::sum);
+                    }
+                }
+                // Group size = round-1 matches * 2 (each match has 2 participants)
+                int maxGroupSize = 0;
+                for (int cnt : groupR1Matches.values()) {
+                    int gs = cnt * 2;
+                    if (gs > maxGroupSize) maxGroupSize = gs;
+                }
+                // Heuristic: group size 2 → Quick 1:2 (mode 2), 4 → Quick 1-4 (mode 3), 8 → Quick 1-8 (mode 4)
+                // For Mix modes we can't reliably distinguish from Quick without Merged P data, default to Quick
+                if (maxGroupSize <= 2) restoredModus = 2;
+                else if (maxGroupSize <= 4) restoredModus = 3;
+                else restoredModus = 4;
+            } else if (hasRepechageTrees) {
+                repechageEnabled = true;
+                restoredModus = 1;
+            }
         }
         
         // Setup state
@@ -5602,20 +5913,29 @@ public class KOFragment extends Fragment {
         }
         
         if (koModus >= 2) {
-            // Quick KO or Mix-Rounds: rebuild groups from Merged then apply scores
+            // Quick KO or Mix-Rounds: try to rebuild groups from Merged, fall back to CSV data
+            koGroups.clear();
             loadParticipantNamesFromMerged();
             java.util.List<String[]> mergedData = loadMergedParticipantData();
+            boolean builtFromMerged = false;
             if (mergedData != null && !mergedData.isEmpty()) {
-                koGroups.clear();
                 if (koModus >= 2 && koModus <= 4) {
                     buildQuickKOGroups(mergedData);
                 } else {
                     buildMixRoundsGroups(mergedData);
                 }
-                for (KOGroup group : koGroups) {
-                    buildGroupKOTree(group);
+                if (!koGroups.isEmpty()) {
+                    builtFromMerged = true;
+                    for (KOGroup group : koGroups) {
+                        buildGroupKOTree(group);
+                    }
                 }
-                
+            }
+            if (!builtFromMerged) {
+                // Rebuild groups directly from CSV lines
+                rebuildGroupsFromCsvLines(lines);
+            }
+            if (!koGroups.isEmpty()) {
                 // Apply match data from lines to groups
                 for (String line : lines) {
                     if (line.startsWith("#") || line.startsWith("Tree,")) continue;
@@ -5729,11 +6049,9 @@ public class KOFragment extends Fragment {
         String[] participantNames = getKOParticipantNames();
         if (participantNames != null) {
             autoAdvanceEmptyMatches(participantNames);
-            if (koRepechage && !losersRounds.isEmpty()) {
-                propagateLosersToLosersBracket(participantNames);
-                autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-            }
         }
+        // propagateKOWinners handles main bracket winner propagation,
+        // loser propagation to repechage trees, and auto-advance in losers bracket
         propagateKOWinners();
         } // end else (standard KO)
         
