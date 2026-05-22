@@ -768,8 +768,8 @@ public class RoundFragment extends Fragment {
             final int rounds = i;
             android.widget.Button btn = new android.widget.Button(getContext());
             btn.setText(String.valueOf(i));
+            setRoundedBackground(btn, i == 1 ? 0xFF2E7D32 : 0xFF1565C0);
             if (i == 1) {
-                btn.setBackgroundColor(0xFF2E7D32);
                 btn.setTextColor(android.graphics.Color.WHITE);
             }
             android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams();
@@ -789,7 +789,7 @@ public class RoundFragment extends Fragment {
 
         android.widget.Button cancelBtn = new android.widget.Button(getContext());
         cancelBtn.setText("CANCEL");
-        cancelBtn.setBackgroundColor(0xFFD32F2F);
+        setRoundedBackground(cancelBtn, 0xFFD32F2F);
         cancelBtn.setTextColor(android.graphics.Color.WHITE);
         cancelBtn.setOnClickListener(v -> {
             if (dialogRef[0] != null) dialogRef[0].dismiss();
@@ -1467,6 +1467,8 @@ public class RoundFragment extends Fragment {
         String title = nameA + "      Vs " + nameB;
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
         builder.setTitle(title);
+        final int scoreButtonColor = 0xFFE0E0E0;
+        final int cancelButtonColor = 0xFF757575;
 
         android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
         grid.setColumnCount(6);
@@ -1483,6 +1485,8 @@ public class RoundFragment extends Fragment {
             btn.setText(String.valueOf(score));
             btn.setMinHeight(btnHeight);
             btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            setRoundedBackground(btn, scoreButtonColor);
+            btn.setTextColor(Color.BLACK);
             btn.setPadding(4, 4, 4, 4);
             btn.setOnClickListener(v -> {
                 if (firstScore[0] == Integer.MIN_VALUE) {
@@ -1520,6 +1524,8 @@ public class RoundFragment extends Fragment {
             btn.setText(String.valueOf(score));
             btn.setMinHeight(btnHeight);
             btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            setRoundedBackground(btn, scoreButtonColor);
+            btn.setTextColor(Color.BLACK);
             btn.setPadding(4, 4, 4, 4);
             btn.setOnClickListener(v -> {
                 if (firstScore[0] == Integer.MIN_VALUE) {
@@ -1557,6 +1563,8 @@ public class RoundFragment extends Fragment {
             btn.setText(String.valueOf(score));
             btn.setMinHeight(btnHeight);
             btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize);
+            setRoundedBackground(btn, scoreButtonColor);
+            btn.setTextColor(Color.BLACK);
             btn.setPadding(4, 4, 4, 4);
             btn.setOnClickListener(v -> {
                 if (firstScore[0] == Integer.MIN_VALUE) {
@@ -1603,6 +1611,8 @@ public class RoundFragment extends Fragment {
         cancelBtn.setText("Cancel");
         cancelBtn.setMinHeight(btnHeight);
         cancelBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize * 0.75f);
+        setRoundedBackground(cancelBtn, cancelButtonColor);
+        cancelBtn.setTextColor(Color.WHITE);
         cancelBtn.setPadding(4, 4, 4, 4);
         cancelBtn.setOnClickListener(v -> {
             firstScore[0] = Integer.MIN_VALUE;
@@ -1632,7 +1642,8 @@ public class RoundFragment extends Fragment {
         resetBtn.setText("RESET");
         resetBtn.setMinHeight(btnHeight);
         resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, increasedTextSize * 0.75f);
-        resetBtn.setBackgroundColor(Color.RED);
+        setRoundedBackground(resetBtn, Color.RED);
+        resetBtn.setTextColor(Color.WHITE);
         resetBtn.setPadding(4, 4, 4, 4);
         resetBtn.setOnClickListener(v -> {
             processBoutResult(origA, origB, -1, -1, tableLayout);

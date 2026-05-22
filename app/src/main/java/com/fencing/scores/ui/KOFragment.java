@@ -22,6 +22,7 @@ import android.content.DialogInterface;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.Bundle;
 
@@ -41,6 +42,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.view.ViewTreeObserver;
@@ -517,16 +520,7 @@ public class KOFragment extends Fragment {
         // Observe request for rankings calculation (triggered when Final page becomes visible)
         scoresViewModel.getRequestKORankings().observe(getViewLifecycleOwner(), request -> {
             if (request != null && request) {
-                // Calculate rankings and set them
-                java.util.List<String> rankings = calculateKORankings();
-                // Filter out empty/null names
-                java.util.List<String> filteredRankings = new java.util.ArrayList<>();
-                for (String name : rankings) {
-                    if (name != null && !name.trim().isEmpty() && !name.equalsIgnoreCase("Empty")) {
-                        filteredRankings.add(name);
-                    }
-                }
-                scoresViewModel.setFinalKORankings(filteredRankings);
+                updateFinalRankingsFromCurrentKOState();
                 // Reset the request flag
                 scoresViewModel.requestKORankingsCalculation(false);
             }
@@ -587,20 +581,28 @@ public class KOFragment extends Fragment {
             public android.view.View getView(int position, android.view.View convertView, android.view.ViewGroup parent) {
                 android.view.View view = super.getView(position, convertView, parent);
                 TextView tv = (TextView) view;
+                float density = getResources().getDisplayMetrics().density;
+                tv.setText(KO_MODUS_LABELS[position] + "  ▼");
                 tv.setTextColor(0xFFFFFFFF); // White text
                 tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                tv.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                tv.setMinHeight((int) (48 * density));
+                tv.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
                 return view;
             }
             @Override
             public android.view.View getDropDownView(int position, android.view.View convertView, android.view.ViewGroup parent) {
                 android.view.View view = super.getDropDownView(position, convertView, parent);
                 TextView tv = (TextView) view;
+                float density = getResources().getDisplayMetrics().density;
                 if (position >= 5 && !isMixRoundsAvailable()) {
                     tv.setTextColor(0xFF666666); // Gray out disabled items
                 } else {
                     tv.setTextColor(0xFFFFFFFF); // White text on black
                 }
                 tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                tv.setMinHeight((int) (48 * density));
+                tv.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
                 return view;
             }
         };
@@ -1873,6 +1875,26 @@ public class KOFragment extends Fragment {
             }
         }
 
+        // If a Third Place match exists and is decided, enforce 3rd/4th ordering from that result.
+        int thirdPlaceRoundIndex = finalRoundIndex + 1;
+        if (thirdPlaceRoundIndex < koRounds.size() && koRounds.get(thirdPlaceRoundIndex).size() == 1) {
+            Match thirdPlace = koRounds.get(thirdPlaceRoundIndex).get(0);
+            String thirdWinner = getMatchWinner(thirdPlace, participantNames, thirdPlaceRoundIndex);
+            if (thirdWinner != null && !thirdWinner.equals("Empty")) {
+                String p1Ref = resolveKORef(thirdPlace.p1, koRounds, thirdPlaceRoundIndex);
+                String p2Ref = resolveKORef(thirdPlace.p2, koRounds, thirdPlaceRoundIndex);
+                String p1Name = getKOName(p1Ref, participantNames);
+                String p2Name = getKOName(p2Ref, participantNames);
+                String thirdLoser = thirdWinner.equals(p1Name) ? p2Name : p1Name;
+                int thirdWinnerScore = Math.max(2, totalRounds * 2 - 1);
+                int thirdLoserScore = Math.max(1, totalRounds * 2 - 2);
+                progressScore.put(thirdWinner, thirdWinnerScore);
+                if (thirdLoser != null && !thirdLoser.equals("Empty")) {
+                    progressScore.put(thirdLoser, thirdLoserScore);
+                }
+            }
+        }
+
         java.util.List<String> sorted = new java.util.ArrayList<>(allParticipants);
         sorted.sort((a, b) -> {
             int scoreA = progressScore.getOrDefault(a, 1);
@@ -1887,6 +1909,18 @@ public class KOFragment extends Fragment {
         rankings.addAll(sorted);
 
         return rankings;
+    }
+
+    private void updateFinalRankingsFromCurrentKOState() {
+        if (scoresViewModel == null) return;
+        java.util.List<String> rankings = calculateKORankings();
+        java.util.List<String> filteredRankings = new java.util.ArrayList<>();
+        for (String name : rankings) {
+            if (name != null && !name.trim().isEmpty() && !name.equalsIgnoreCase("Empty")) {
+                filteredRankings.add(name);
+            }
+        }
+        scoresViewModel.setFinalKORankings(filteredRankings);
     }
     
     // Calculate rankings for Quick KO / Mix-Rounds modes (multiple independent groups)
@@ -2224,7 +2258,122 @@ public class KOFragment extends Fragment {
         } catch (Exception e) {
             android.util.Log.w("KOFragment", "Could not load FinalPos from Merged: " + e.getMessage());
         }
+        appendFallbackSeedPositions(nameToFinalPos);
         return nameToFinalPos;
+    }
+
+    private void appendFallbackSeedPositions(java.util.Map<String, Integer> nameToFinalPos) {
+        String[] fallbackNames = getKOParticipantNames();
+        if (fallbackNames == null || fallbackNames.length == 0) return;
+
+        int nextPos = 1;
+        for (Integer value : nameToFinalPos.values()) {
+            if (value != null && value >= nextPos) {
+                nextPos = value + 1;
+            }
+        }
+
+        for (String name : fallbackNames) {
+            if (name == null || name.trim().isEmpty() || name.equals("Empty")) continue;
+            if (!nameToFinalPos.containsKey(name)) {
+                nameToFinalPos.put(name, nextPos++);
+            }
+        }
+    }
+
+    private int inferKOSlotCountFromImportedLines(List<String> lines) {
+        int roundOneMatches = 0;
+        for (String line : lines) {
+            if (line == null || line.startsWith("#") || line.startsWith("Tree,")) continue;
+            String[] parts = line.split(",", -1);
+            if (parts.length < 2) continue;
+            if ("R1".equals(parts[0].trim()) && "1".equals(parts[1].trim())) {
+                roundOneMatches++;
+            }
+        }
+        return roundOneMatches > 0 ? roundOneMatches * 2 : 8;
+    }
+
+    private void initializeParticipantsFromImportedKOLines(List<String> lines, int fallbackKoSize) {
+        java.util.Map<Integer, String> seededNames = new java.util.TreeMap<>();
+        java.util.LinkedHashSet<String> orderedNames = new java.util.LinkedHashSet<>();
+
+        for (String line : lines) {
+            if (line == null || line.startsWith("#") || line.startsWith("Tree,")) continue;
+            String[] parts = line.split(",", -1);
+            if (parts.length < 6) continue;
+            addImportedParticipantToken(parts[3], seededNames, orderedNames);
+            addImportedParticipantToken(parts[5], seededNames, orderedNames);
+        }
+
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (String name : seededNames.values()) {
+            if (!names.contains(name)) {
+                names.add(name);
+            }
+        }
+        for (String name : orderedNames) {
+            if (!names.contains(name)) {
+                names.add(name);
+            }
+        }
+
+        if (!names.isEmpty()) {
+            koParticipantNames = names.toArray(new String[0]);
+            koNrPart = names.size();
+        } else if (koNrPart <= 0) {
+            koNrPart = fallbackKoSize;
+        }
+    }
+
+    private void addImportedParticipantToken(String rawToken, java.util.Map<Integer, String> seededNames,
+            java.util.LinkedHashSet<String> orderedNames) {
+        String token = rawToken == null ? "" : rawToken.trim();
+        if (token.isEmpty() || token.equals("Empty")) return;
+
+        int seed = extractSeedPrefix(token);
+        String normalized = normalizeImportedParticipantToken(token);
+        if (normalized.isEmpty() || normalized.equals("Empty") || isReferenceLikeParticipantToken(normalized)) {
+            return;
+        }
+
+        if (seed > 0 && !seededNames.containsKey(seed)) {
+            seededNames.put(seed, normalized);
+        }
+        orderedNames.add(normalized);
+    }
+
+    private int extractSeedPrefix(String token) {
+        int spaceIdx = token.indexOf(' ');
+        if (spaceIdx <= 0) return -1;
+        String prefix = token.substring(0, spaceIdx).trim();
+        if (!prefix.matches("\\d+")) return -1;
+        try {
+            return Integer.parseInt(prefix);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private String normalizeImportedParticipantToken(String token) {
+        if (token == null) return "";
+        String trimmed = token.trim();
+        if (trimmed.isEmpty() || trimmed.equals("Empty")) return trimmed;
+        int seed = extractSeedPrefix(trimmed);
+        if (seed > 0) {
+            int spaceIdx = trimmed.indexOf(' ');
+            if (spaceIdx > 0 && spaceIdx + 1 < trimmed.length()) {
+                return trimmed.substring(spaceIdx + 1).trim();
+            }
+        }
+        return trimmed;
+    }
+
+    private boolean isReferenceLikeParticipantToken(String token) {
+        if (token.matches("\\d+")) return true;
+        return token.startsWith("W") || token.startsWith("L")
+            || token.equals("MW") || token.equals("LW") || token.equals("LBW")
+            || token.equals("GFL") || token.equals("LFL") || token.equals("-");
     }
 
     // Load P (pool position) values from Merged_backup.csv for Mix-Rounds position display
@@ -2276,88 +2425,44 @@ public class KOFragment extends Fragment {
         // For Quick KO and Mix-Rounds modes, render multiple group trees
         if (koModus >= 2 && !koGroups.isEmpty()) {
             renderMultiGroupKOTable(koBoxLayout);
+            updateFinalRankingsFromCurrentKOState();
             return;
         }
         // If mode >= 2 but no groups loaded yet, show nothing (wait for RELOAD)
         if (koModus >= 2) {
+            updateFinalRankingsFromCurrentKOState();
             return;
         }
         
         String[] origNames = getKOParticipantNames();
         // Always use the full participant array length, not filtered or sorted names, for KO tree
         int nrPart = (origNames != null) ? origNames.length : ScoresViewModel.DEFAULT_PARTICIPANTS;
-        if (origNames == null || origNames.length == 0) return;
+        if (origNames == null || origNames.length == 0) {
+            updateFinalRankingsFromCurrentKOState();
+            return;
+        }
         int N = 1;
         while (N < nrPart) N *= 2;
         int koSize = N;
-        // Read FinalPos from Merged_backup.csv and sort names accordingly
         java.util.List<String> sortedNames = new java.util.ArrayList<>();
-        try {
-            java.io.File filesDir = requireContext().getFilesDir();
-            java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
-            java.util.List<String[]> rows = new java.util.ArrayList<>();
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
-            String line;
-            reader.readLine(); // skip header
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(",");
-                if (parts.length >= 9) {
-                    rows.add(parts);
-                }
-            }
-            reader.close();
-            // Sort rows by FinalPos (column 8, 0-based), randomizing ties
-            java.util.Random rand = new java.util.Random();
-            rows.sort((a, b) -> {
-                try {
-                    int posa = Integer.parseInt(a[8]);
-                    int posb = Integer.parseInt(b[8]);
-                    if (posa != posb) return Integer.compare(posa, posb);
-                    // If tied, randomize order
-                    return rand.nextInt(3) - 1; // -1, 0, or 1
-                } catch (Exception e) { return 0; }
-            });
-            for (String[] row : rows) {
-                String name = row[1];
-                if (name != null && !name.trim().isEmpty()) {
-                    sortedNames.add(name);
-                }
-            }
-        } catch (Exception e) {
-            // fallback: use origNames order
-            for (String name : origNames) {
-                if (name != null && !name.trim().isEmpty()) sortedNames.add(name);
+        final java.util.Map<String, Integer> nameToPosition = loadFinalPosFromMerged();
+        for (String name : origNames) {
+            if (name != null && !name.trim().isEmpty() && !name.equals("Empty")) {
+                sortedNames.add(name);
             }
         }
+        sortedNames.sort((a, b) -> Integer.compare(
+            nameToPosition.getOrDefault(a, Integer.MAX_VALUE),
+            nameToPosition.getOrDefault(b, Integer.MAX_VALUE)
+        ));
         String[] participantNames = new String[koSize];
         for (int i = 0; i < koSize; i++) {
             if (i < sortedNames.size()) participantNames[i] = sortedNames.get(i);
             else participantNames[i] = "Empty";
         }
         int[] positions = new int[koSize];
-        // Map name -> FinalPos for lookup by name (used in later rounds)
-        final java.util.Map<String, Integer> nameToPosition = new java.util.HashMap<>();
-        try {
-            java.io.File filesDir = requireContext().getFilesDir();
-            java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
-            String line;
-            reader.readLine();
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(",");
-                if (parts.length >= 9) {
-                    String name = parts[1];
-                    int pos = 0;
-                    try { pos = Integer.parseInt(parts[8]); } catch (Exception e) { pos = 0; }
-                    nameToPosition.put(name, pos);
-                }
-            }
-            reader.close();
-            for (int i = 0; i < koSize; i++) {
-                positions[i] = nameToPosition.getOrDefault(participantNames[i], 0);
-            }
-        } catch (Exception e) {
-            for (int i = 0; i < koSize; i++) positions[i] = 0;
+        for (int i = 0; i < koSize; i++) {
+            positions[i] = nameToPosition.getOrDefault(participantNames[i], 0);
         }
         if (koRounds.isEmpty()) {
             loadKOTree(nrPart, koRepechage);
@@ -2661,6 +2766,8 @@ public class KOFragment extends Fragment {
         if (koRepechage && !losersRounds.isEmpty()) {
             renderLosersBracket(koBoxLayout, participantNames, nameToPosition, boxHeightPx, density, colorTop, colorBottom, roundWidth, roundXOffset, headerHeightPx);
         }
+
+        updateFinalRankingsFromCurrentKOState();
     }
     
     // Render losers bracket for repechage mode with tree groupings
@@ -2685,7 +2792,10 @@ public class KOFragment extends Fragment {
         losersHeader.setTextSize(16);
         losersHeader.setGravity(Gravity.CENTER);
         losersHeader.setPadding(8, 8, 8, 8);
-        losersHeader.setBackgroundColor(0xFF333333);
+        android.graphics.drawable.GradientDrawable lhBg = new android.graphics.drawable.GradientDrawable();
+        lhBg.setColor(0xFF333333);
+        lhBg.setCornerRadius(8 * getResources().getDisplayMetrics().density);
+        losersHeader.setBackground(lhBg);
         losersHeader.setTextColor(0xFFFFFFFF);
         koBoxLayout.addView(losersHeader);
         
@@ -3330,6 +3440,45 @@ public class KOFragment extends Fragment {
         }
     }
 
+    private int resolvePopupButtonBaseColor(Button button) {
+        int defaultColor = 0xFFE0E0E0;
+        try {
+            Drawable bg = button.getBackground();
+            if (bg instanceof ColorDrawable) {
+                return ((ColorDrawable) bg).getColor();
+            }
+            if (bg instanceof android.graphics.drawable.GradientDrawable) {
+                ColorStateList csl = ((android.graphics.drawable.GradientDrawable) bg).getColor();
+                if (csl != null) return csl.getDefaultColor();
+            }
+            ColorStateList tint = button.getBackgroundTintList();
+            if (tint != null) return tint.getDefaultColor();
+        } catch (Exception ignored) {
+        }
+        return defaultColor;
+    }
+
+    private void applyRoundedCornersToPopupButtons(View root) {
+        if (root == null || getContext() == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        if (root instanceof Button) {
+            Button button = (Button) root;
+            int fill = resolvePopupButtonBaseColor(button);
+            android.graphics.drawable.GradientDrawable drawable = new android.graphics.drawable.GradientDrawable();
+            drawable.setCornerRadius(8f * density);
+            drawable.setColor(fill);
+            drawable.setStroke((int) (1f * density), 0xFF777777);
+            button.setBackground(drawable);
+            return;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) root;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                applyRoundedCornersToPopupButtons(vg.getChildAt(i));
+            }
+        }
+    }
+
     // Show dialog to enter match result
     private void showMatchDialog(Match match, String[] participantNames) {
         // For losers bracket matches, use getLosersName which resolves L_/W_ references
@@ -3519,6 +3668,7 @@ public class KOFragment extends Fragment {
         android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
         verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
         verticalLayout.addView(grid);
+        applyRoundedCornersToPopupButtons(verticalLayout);
 
         builder.setView(verticalLayout);
         android.app.AlertDialog dialog = builder.create();
@@ -3706,6 +3856,7 @@ public class KOFragment extends Fragment {
         resetBtn.setOnClickListener(v -> {
             match.score1 = -1;
             match.score2 = -1;
+            match.winner = null;
             propagateKOWinners();
             backupKOTree();
             renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
@@ -3723,6 +3874,7 @@ public class KOFragment extends Fragment {
         android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
         verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
         verticalLayout.addView(grid);
+        applyRoundedCornersToPopupButtons(verticalLayout);
 
         builder.setView(verticalLayout);
         android.app.AlertDialog dialog = builder.create();
@@ -4253,6 +4405,7 @@ public class KOFragment extends Fragment {
         android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
         verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
         verticalLayout.addView(grid);
+        applyRoundedCornersToPopupButtons(verticalLayout);
         
         builder.setView(verticalLayout);
         android.app.AlertDialog dialog = builder.create();
@@ -4454,6 +4607,7 @@ public class KOFragment extends Fragment {
         android.widget.LinearLayout verticalLayout = new android.widget.LinearLayout(getContext());
         verticalLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
         verticalLayout.addView(grid);
+        applyRoundedCornersToPopupButtons(verticalLayout);
         
         builder.setView(verticalLayout);
         android.app.AlertDialog dialog = builder.create();
@@ -5413,10 +5567,12 @@ public class KOFragment extends Fragment {
         int koSize = 8;
         boolean repechageEnabled = false;
         int restoredModus = 0;
+        boolean hasMetaLine = false;
         
         // Parse metadata line
         for (String line : lines) {
             if (line.startsWith("#META,")) {
+                hasMetaLine = true;
                 String[] parts = line.split(",");
                 if (parts.length >= 3) {
                     koSize = Integer.parseInt(parts[1].trim());
@@ -5428,9 +5584,12 @@ public class KOFragment extends Fragment {
                 break;
             }
         }
+
+        if (!hasMetaLine) {
+            koSize = inferKOSlotCountFromImportedLines(lines);
+        }
         
         // Setup state
-        koNrPart = koSize;
         koRepechage = repechageEnabled;
         koModus = restoredModus;
         
@@ -5506,7 +5665,11 @@ public class KOFragment extends Fragment {
             }
         } else {
         // Standard KO / Repechage: load tree and apply scores
-        loadKOTree(koNrPart, koRepechage);
+        initializeParticipantsFromImportedKOLines(lines, koSize);
+        int koInputParticipants = (koParticipantNames != null && koParticipantNames.length > 0)
+            ? koParticipantNames.length : koSize;
+        koNrPart = koInputParticipants;
+        loadKOTree(koInputParticipants, koRepechage);
         
         // Apply match data from lines
         for (String line : lines) {
@@ -5521,9 +5684,9 @@ public class KOFragment extends Fragment {
                 matchIdx = Integer.parseInt(parts[2].trim());
             } catch (Exception e) { continue; }
             
-            String p1 = parts[3];
+            String p1 = normalizeImportedParticipantToken(parts[3]);
             String score1Str = parts[4];
-            String p2 = parts[5];
+            String p2 = normalizeImportedParticipantToken(parts[5]);
             String score2Str = parts[6];
             
             int s1 = -1, s2 = -1;
@@ -5538,6 +5701,9 @@ public class KOFragment extends Fragment {
                     m.p2 = p2;
                     m.score1 = s1;
                     m.score2 = s2;
+                    if (s1 > s2) m.winner = p1;
+                    else if (s2 > s1) m.winner = p2;
+                    else m.winner = null;
                 }
             } else if (!treeId.equals("R1") && koRepechage) {
                 for (RepechageTree tree : allRepechageTrees) {
@@ -5549,6 +5715,9 @@ public class KOFragment extends Fragment {
                             m.p2 = p2;
                             m.score1 = s1;
                             m.score2 = s2;
+                            if (s1 > s2) m.winner = p1;
+                            else if (s2 > s1) m.winner = p2;
+                            else m.winner = null;
                         }
                         break;
                     }
@@ -5572,5 +5741,7 @@ public class KOFragment extends Fragment {
         if (koBoxLayoutRef != null) {
             renderKOTable(koBoxLayoutRef);
         }
+
+        updateFinalRankingsFromCurrentKOState();
     }
 }

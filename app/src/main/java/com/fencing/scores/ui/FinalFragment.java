@@ -159,15 +159,25 @@ public class FinalFragment extends Fragment {
             rankView.setPadding(16, 12, 16, 12);
             rankView.setShadowLayer(3, 2, 2, 0xFF444444); // Dark shadow for position
             
-            // Highlight top 3
+            // Highlight top 3 with rounded background
+            float density = getResources().getDisplayMetrics().density;
             if (rank == 1) {
-                rankView.setBackgroundColor(0xFFFFD700); // Gold
+                android.graphics.drawable.GradientDrawable bg1 = new android.graphics.drawable.GradientDrawable();
+                bg1.setColor(0xFFFFD700);
+                bg1.setCornerRadius(8 * density);
+                rankView.setBackground(bg1);
                 rankView.setTextColor(0xFF000000);
             } else if (rank == 2) {
-                rankView.setBackgroundColor(0xFFC0C0C0); // Silver
+                android.graphics.drawable.GradientDrawable bg2 = new android.graphics.drawable.GradientDrawable();
+                bg2.setColor(0xFFC0C0C0);
+                bg2.setCornerRadius(8 * density);
+                rankView.setBackground(bg2);
                 rankView.setTextColor(0xFF000000);
             } else if (rank == 3) {
-                rankView.setBackgroundColor(0xFFCD7F32); // Bronze
+                android.graphics.drawable.GradientDrawable bg3 = new android.graphics.drawable.GradientDrawable();
+                bg3.setColor(0xFFCD7F32);
+                bg3.setCornerRadius(8 * density);
+                rankView.setBackground(bg3);
                 rankView.setTextColor(0xFFFFFFFF);
             }
             

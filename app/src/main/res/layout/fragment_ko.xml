@@ -29,7 +29,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
-                    android:background="@android:color/black"
+                    android:background="@drawable/ko_modus_spinner_bg"
                     android:popupBackground="@android:color/black" />
                 <Button
                     android:id="@+id/ko_reloadBtn"

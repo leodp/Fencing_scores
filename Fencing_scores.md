@@ -27,7 +27,7 @@ Navigation: Swipe left/right to cycle through pages. Long-press on Final returns
 ### Configuration
 - **Participants:** 10 default (adjustable 5-18)
 - **Maximum Score:** 15 touches per bout
-- **Display:** ~98% screen height usage, dynamically sized cells
+- **Display:** 100% screen height usage, dynamically sized cells
 
 ### Visual Design
 - **Layout:** Excel-like matrix, white background, black borders on all cells (including Name column and headers)
@@ -299,7 +299,7 @@ G1,1,1,Alice,15,Bob,10,Alice
 - ko_h8.json, ko_h16.json, ko_h32.json, ko_h64.json, ko_h128.json - Repechage brackets
 
 ### Backup Files (in app filesDir)
-- Fencing_backup.csv - Round auto-backup
+- Round_Rx_backup.csv - Rounds auto-backup
 - Merged_backup.csv - Merged auto-backup
 - KO_backup.csv - KO auto-backup
 

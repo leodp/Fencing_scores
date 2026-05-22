@@ -2,6 +2,16 @@
 
 ## [V2.0 - 2026-05-21]
 
+### MRDebug5 - KO and Final Ranking Fixes
+- Final ranking is now refreshed immediately after KO reload/import/restore and after KO table re-renders, so loading KO data updates Final page rankings without extra manual steps
+- Fixed standard KO ranking to correctly apply the `Final 3rd:4th pos.` match result, including cases where the lower-seeded participant wins the 3rd-place match
+- Added consistent 8dp rounded-corner styling for KO score popup buttons and the Round "Rounds Nr. in the pool" popup buttons
+- Renamed project icon asset folder from `îcon_img` to `icon_img`
+
+### MRDebug6 - KO CSV Reload and Pulldown Cleanup
+- Fixed KO `REPLACE` imports for saved CSV files without prior Merged data by rebuilding KO participant seeds directly from the imported KO file, so entering or resetting KO results updates Final rankings correctly afterward
+- Updated the KO modus pulldown to match the other buttons with 48dp height, 8dp rounded corners, and a visible white down-arrow indicator
+
 ### Stability and UX Cleanup
 - Reduced noisy debug messaging in Round and Merged flows by commenting non-essential diagnostic logs and sort-notification toasts
 - Kept important messages for save confirmations and error conditions
@@ -125,7 +135,7 @@
 
 ### Rounds Page
 - Added black borders to Name column and header cells for improved visibility
-- Improved vertical sizing to use ~98% of screen height
+- Improved vertical sizing to use 100% of screen height
 - Reduced CANCEL/RESET button font size by 25% to prevent text clipping
 - QR OUT now uses a screenshot of the rounds matrix as background
 - QR code size increased to 95% of screen height for better readability
