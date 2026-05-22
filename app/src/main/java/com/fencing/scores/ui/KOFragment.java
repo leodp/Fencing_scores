@@ -1900,19 +1900,13 @@ public class KOFragment extends Fragment {
             }
             return calculateRepechageRankings(participantNames, nameToFinalPos);
         }
-        // Standard KO ranking must include all participants even when rounds are incomplete.
-        // Score model: active at round r => r*2+1, eliminated at round r => r*2.
-        // Winner of final gets highest score, final loser the next one.
+        // Standard KO (no repechage): use only actual decided matches.
+        // Undisputed matches remain neutral and are ordered by FinalPos.
         java.util.Set<String> allParticipants = new java.util.LinkedHashSet<>();
         for (String name : participantNames) {
             if (name != null && !name.trim().isEmpty() && !name.equals("Empty")) {
                 allParticipants.add(name);
             }
-        }
-
-        java.util.Map<String, Integer> progressScore = new java.util.HashMap<>();
-        for (String name : allParticipants) {
-            progressScore.put(name, 1); // Active at round 0.
         }
 
         int finalRoundIndex = -1;
@@ -1932,75 +1926,33 @@ public class KOFragment extends Fragment {
             finalRoundIndex = Math.max(0, koRounds.size() - 1);
         }
 
-        int totalRounds = finalRoundIndex + 1;
-        // Track ranking-assumed winners for W-ref resolution in subsequent rounds
-        java.util.Map<String, String> rankingWinners = new java.util.HashMap<>();
-        for (int r = 0; r <= finalRoundIndex && r < koRounds.size(); r++) {
-            List<Match> round = koRounds.get(r);
-            boolean isFinal = (r == finalRoundIndex);
+        java.util.Map<String, Integer> mainLevel = new java.util.HashMap<>();
+        java.util.Map<String, Boolean> actuallyLost = new java.util.HashMap<>();
+        for (String name : allParticipants) {
+            mainLevel.put(name, 0);
+            actuallyLost.put(name, false);
+        }
 
-            for (Match m : round) {
+        for (int r = 0; r <= finalRoundIndex && r < koRounds.size(); r++) {
+            for (Match m : koRounds.get(r)) {
                 String p1Ref = resolveKORef(m.p1, koRounds, r);
                 String p2Ref = resolveKORef(m.p2, koRounds, r);
                 String p1Name = getKOName(p1Ref, participantNames);
                 String p2Name = getKOName(p2Ref, participantNames);
-                // Resolve unresolved W-refs via rankingWinners from previous rounds
-                if (!allParticipants.contains(p1Name) && m.p1 != null && m.p1.startsWith("W") && r > 0) {
-                    try {
-                        int prevMatchIdx = Integer.parseInt(m.p1.substring(1)) - 1;
-                        String resolved = rankingWinners.get((r - 1) + "." + prevMatchIdx);
-                        if (resolved != null && allParticipants.contains(resolved)) p1Name = resolved;
-                    } catch (NumberFormatException e) {}
-                }
-                if (!allParticipants.contains(p2Name) && m.p2 != null && m.p2.startsWith("W") && r > 0) {
-                    try {
-                        int prevMatchIdx = Integer.parseInt(m.p2.substring(1)) - 1;
-                        String resolved = rankingWinners.get((r - 1) + "." + prevMatchIdx);
-                        if (resolved != null && allParticipants.contains(resolved)) p2Name = resolved;
-                    } catch (NumberFormatException e) {}
-                }
-
-                if ((p1Name == null || p1Name.equals("Empty")) && (p2Name == null || p2Name.equals("Empty"))) {
-                    continue;
-                }
 
                 String winner = getMatchWinner(m, participantNames, r);
-                if (winner == null || winner.equals("Empty")) {
-                    // For ranking only: assume participant with better FinalPos wins.
-                    // Do NOT modify the tree (m.winner stays unchanged).
-                    boolean p1Real = allParticipants.contains(p1Name);
-                    boolean p2Real = allParticipants.contains(p2Name);
-                    if (p1Real && p2Real) {
-                        int pos1 = nameToFinalPos.getOrDefault(p1Name, 999);
-                        int pos2 = nameToFinalPos.getOrDefault(p2Name, 999);
-                        winner = (pos1 <= pos2) ? p1Name : p2Name;
-                    } else if (p1Real) {
-                        winner = p1Name;
-                    } else if (p2Real) {
-                        winner = p2Name;
-                    } else {
-                        continue;
-                    }
-                }
-                // Track winner for resolution in subsequent rounds
-                rankingWinners.put(r + "." + m.matchIdx, winner);
+                if (winner == null || winner.equals("Empty") || !allParticipants.contains(winner)) continue;
 
+                mainLevel.put(winner, Math.max(mainLevel.getOrDefault(winner, 0), r + 1));
                 String loser = winner.equals(p1Name) ? p2Name : p1Name;
-                if (isFinal) {
-                    progressScore.put(winner, totalRounds * 2 + 1);
-                    if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
-                        progressScore.put(loser, totalRounds * 2);
-                    }
-                } else {
-                    progressScore.put(winner, (r + 1) * 2 + 1);
-                    if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
-                        progressScore.put(loser, r * 2);
-                    }
+                if (loser != null && !loser.equals("Empty") && allParticipants.contains(loser)) {
+                    actuallyLost.put(loser, true);
                 }
             }
         }
 
-        // If a Third Place match exists, enforce 3rd/4th ordering from result or assumption.
+        // Third-place result can break ties between semifinal losers when available.
+        java.util.Map<String, Integer> thirdPlaceOrder = new java.util.HashMap<>();
         int thirdPlaceRoundIndex = finalRoundIndex + 1;
         if (thirdPlaceRoundIndex < koRounds.size() && koRounds.get(thirdPlaceRoundIndex).size() == 1) {
             Match thirdPlace = koRounds.get(thirdPlaceRoundIndex).get(0);
@@ -2009,38 +1961,34 @@ public class KOFragment extends Fragment {
             String p1Name = getKOName(p1Ref, participantNames);
             String p2Name = getKOName(p2Ref, participantNames);
             String thirdWinner = getMatchWinner(thirdPlace, participantNames, thirdPlaceRoundIndex);
-            if (thirdWinner == null || thirdWinner.equals("Empty")) {
-                // Assume better FinalPos wins for ranking
-                boolean p1Real = allParticipants.contains(p1Name);
-                boolean p2Real = allParticipants.contains(p2Name);
-                if (p1Real && p2Real) {
-                    int pos1 = nameToFinalPos.getOrDefault(p1Name, 999);
-                    int pos2 = nameToFinalPos.getOrDefault(p2Name, 999);
-                    thirdWinner = (pos1 <= pos2) ? p1Name : p2Name;
-                } else if (p1Real) {
-                    thirdWinner = p1Name;
-                } else if (p2Real) {
-                    thirdWinner = p2Name;
-                }
-            }
             if (thirdWinner != null && !thirdWinner.equals("Empty")) {
                 String thirdLoser = thirdWinner.equals(p1Name) ? p2Name : p1Name;
-                int thirdWinnerScore = Math.max(2, totalRounds * 2 - 1);
-                int thirdLoserScore = Math.max(1, totalRounds * 2 - 2);
-                progressScore.put(thirdWinner, thirdWinnerScore);
-                if (thirdLoser != null && !thirdLoser.equals("Empty") && allParticipants.contains(thirdLoser)) {
-                    progressScore.put(thirdLoser, thirdLoserScore);
+                if (allParticipants.contains(thirdWinner)) {
+                    thirdPlaceOrder.put(thirdWinner, 0);
+                }
+                if (thirdLoser != null && allParticipants.contains(thirdLoser)) {
+                    thirdPlaceOrder.put(thirdLoser, 1);
                 }
             }
         }
 
         java.util.List<String> sorted = new java.util.ArrayList<>(allParticipants);
         sorted.sort((a, b) -> {
-            int scoreA = progressScore.getOrDefault(a, 1);
-            int scoreB = progressScore.getOrDefault(b, 1);
-            if (scoreA != scoreB) {
-                return Integer.compare(scoreB, scoreA);
+            int levelA = mainLevel.getOrDefault(a, 0);
+            int levelB = mainLevel.getOrDefault(b, 0);
+            if (levelA != levelB) return Integer.compare(levelB, levelA);
+
+            boolean lostA = actuallyLost.getOrDefault(a, false);
+            boolean lostB = actuallyLost.getOrDefault(b, false);
+            if (lostA != lostB) return lostA ? 1 : -1;
+
+            boolean thirdA = thirdPlaceOrder.containsKey(a);
+            boolean thirdB = thirdPlaceOrder.containsKey(b);
+            if (thirdA && thirdB) {
+                int cmpThird = Integer.compare(thirdPlaceOrder.get(a), thirdPlaceOrder.get(b));
+                if (cmpThird != 0) return cmpThird;
             }
+
             int posA = nameToFinalPos.getOrDefault(a, 999);
             int posB = nameToFinalPos.getOrDefault(b, 999);
             return Integer.compare(posA, posB);
