@@ -129,6 +129,35 @@ public class KOFragment extends Fragment {
             this.p2 = p2;
         }
     }
+
+    private static class StoredMatchResult {
+        final String treeId;
+        final int roundIdx;
+        final int matchIdx;
+        final String p1Name;
+        final String p2Name;
+        final int score1;
+        final int score2;
+
+        StoredMatchResult(String treeId, int roundIdx, int matchIdx, String p1Name, String p2Name,
+                          int score1, int score2) {
+            this.treeId = treeId;
+            this.roundIdx = roundIdx;
+            this.matchIdx = matchIdx;
+            this.p1Name = p1Name;
+            this.p2Name = p2Name;
+            this.score1 = score1;
+            this.score2 = score2;
+        }
+
+        String key() {
+            return treeId + ":" + roundIdx + ":" + matchIdx;
+        }
+
+        boolean matchesParticipants(String currentP1, String currentP2) {
+            return java.util.Objects.equals(p1Name, currentP1) && java.util.Objects.equals(p2Name, currentP2);
+        }
+    }
     
     // Repechage tree node - each tree has matches and can spawn sub-trees for losers
     private static class RepechageTree {
@@ -2166,7 +2195,7 @@ public class KOFragment extends Fragment {
                 String p2Ref = resolveKORef(m.p2, koRounds, r);
                 String p1Name = getKOName(p1Ref, participantNames);
                 String p2Name = getKOName(p2Ref, participantNames);
-                
+
                 String winner = getMatchWinner(m, participantNames, r);
                 if (winner == null || winner.equals("Empty")) continue;
                 if (!allParticipants.contains(winner)) continue;
@@ -2187,7 +2216,7 @@ public class KOFragment extends Fragment {
                 for (Match m : tree.rounds.get(r)) {
                     String p1Name = resolveRepechageParticipant(m.p1, participantNames, tree);
                     String p2Name = resolveRepechageParticipant(m.p2, participantNames, tree);
-                    
+
                     String winner = null;
                     if (m.score1 > m.score2 && allParticipants.contains(p1Name)) {
                         winner = p1Name;
@@ -3884,9 +3913,7 @@ public class KOFragment extends Fragment {
             match.score1 = -1;
             match.score2 = -1;
             match.winner = null;
-            propagateKOWinners();
-            backupKOTree();
-            renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+            refreshKOStateAfterMatchUpdate();
             if (dialogRef[0] != null) dialogRef[0].dismiss();
         });
         android.widget.GridLayout.LayoutParams resetParams = new android.widget.GridLayout.LayoutParams();
@@ -3950,9 +3977,7 @@ public class KOFragment extends Fragment {
             btn.setOnClickListener(v -> {
                 match.score1 = score1;
                 match.score2 = score2;
-                propagateKOWinners();
-                backupKOTree();
-                renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+                refreshKOStateAfterMatchUpdate();
                 if (dialogRef[0] != null) dialogRef[0].dismiss();
             });
             android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
@@ -3984,9 +4009,7 @@ public class KOFragment extends Fragment {
             btn.setOnClickListener(v -> {
                 match.score1 = score1;
                 match.score2 = score2;
-                propagateKOWinners();
-                backupKOTree();
-                renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+                refreshKOStateAfterMatchUpdate();
                 if (dialogRef[0] != null) dialogRef[0].dismiss();
             });
             android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
@@ -4018,9 +4041,7 @@ public class KOFragment extends Fragment {
             btn.setOnClickListener(v -> {
                 match.score1 = score1;
                 match.score2 = score2;
-                propagateKOWinners();
-                backupKOTree();
-                renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+                refreshKOStateAfterMatchUpdate();
                 if (dialogRef[0] != null) dialogRef[0].dismiss();
             });
             android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
@@ -4091,9 +4112,7 @@ public class KOFragment extends Fragment {
             match.score1 = -1;
             match.score2 = -1;
             match.winner = null;
-            propagateKOWinners();
-            backupKOTree();
-            renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+            refreshKOStateAfterMatchUpdate();
             if (dialogRef[0] != null) dialogRef[0].dismiss();
         });
         android.widget.GridLayout.LayoutParams resetParams = new android.widget.GridLayout.LayoutParams();
@@ -4128,9 +4147,7 @@ public class KOFragment extends Fragment {
         if ((p1Name.equals("Empty") && !p2Name.equals("Empty")) || (!p1Name.equals("Empty") && p2Name.equals("Empty"))) {
             match.score1 = p1Name.equals("Empty") ? 0 : 15;
             match.score2 = p2Name.equals("Empty") ? 0 : 15;
-            propagateKOWinners();
-            backupKOTree();
-            renderKOTable((LinearLayout) getView().findViewById(R.id.ko_boxLayout));
+            refreshKOStateAfterMatchUpdate();
         }
     }
     
@@ -4977,6 +4994,118 @@ public class KOFragment extends Fragment {
         if (match.score1 > match.score2) return p1Name;
         if (match.score2 > match.score1) return p2Name;
         return "Empty";
+    }
+
+    private void refreshKOStateAfterMatchUpdate() {
+        String[] participantNames = getKOParticipantNames();
+        if (participantNames == null) return;
+
+        propagateKOWinners();
+        if (koRepechage) {
+            rebuildRepechageTreesFromCurrentState(participantNames);
+        }
+
+        backupKOTree();
+        LinearLayout koBoxLayout = null;
+        View root = getView();
+        if (root != null) {
+            koBoxLayout = root.findViewById(R.id.ko_boxLayout);
+        }
+        if (koBoxLayout == null) {
+            koBoxLayout = koBoxLayoutRef;
+        }
+        if (koBoxLayout != null) {
+            renderKOTable(koBoxLayout);
+        }
+    }
+
+    private void rebuildRepechageTreesFromCurrentState(String[] participantNames) {
+        if (!koRepechage || koRounds.isEmpty()) return;
+
+        java.util.Map<String, StoredMatchResult> savedRepechageResults = new java.util.LinkedHashMap<>();
+        for (RepechageTree tree : allRepechageTrees) {
+            if (tree.treeId.equals("R1")) continue;
+            for (int r = 0; r < tree.rounds.size(); r++) {
+                for (Match match : tree.rounds.get(r)) {
+                    if (match.score1 < 0 || match.score2 < 0) continue;
+                    String p1Name = getLosersName(match.p1, participantNames);
+                    String p2Name = getLosersName(match.p2, participantNames);
+                    if (isPlaceholderName(p1Name) || isPlaceholderName(p2Name)) continue;
+                    StoredMatchResult result = new StoredMatchResult(tree.treeId, r, match.matchIdx,
+                        p1Name, p2Name, match.score1, match.score2);
+                    savedRepechageResults.put(result.key(), result);
+                }
+            }
+        }
+
+        StoredMatchResult savedGrandFinal = null;
+        if (grandFinalMatch != null && grandFinalMatch.score1 >= 0 && grandFinalMatch.score2 >= 0) {
+            String p1Name = getLosersName(grandFinalMatch.p1, participantNames);
+            String p2Name = getLosersName(grandFinalMatch.p2, participantNames);
+            if (!isPlaceholderName(p1Name) && !isPlaceholderName(p2Name)) {
+                savedGrandFinal = new StoredMatchResult("GF", 0, 0, p1Name, p2Name,
+                    grandFinalMatch.score1, grandFinalMatch.score2);
+            }
+        }
+
+        int koSize = koRounds.get(0).size() * 2;
+        initializeLosersBracket(koSize);
+        propagateLosersToLosersBracket(participantNames);
+        autoAdvanceEmptyMatchesInLosersBracket(participantNames);
+
+        java.util.Set<String> appliedKeys = new java.util.HashSet<>();
+        boolean changed = true;
+        int pass = 0;
+        int maxPasses = Math.max(4, allRepechageTrees.size() * 2);
+        while (changed && pass < maxPasses) {
+            changed = false;
+            pass++;
+
+            for (StoredMatchResult saved : savedRepechageResults.values()) {
+                if (appliedKeys.contains(saved.key())) continue;
+                Match match = findTreeMatch(saved.treeId, saved.roundIdx, saved.matchIdx);
+                if (match == null) continue;
+
+                String currentP1 = getLosersName(match.p1, participantNames);
+                String currentP2 = getLosersName(match.p2, participantNames);
+                if (isPlaceholderName(currentP1) || isPlaceholderName(currentP2)) continue;
+                if (!saved.matchesParticipants(currentP1, currentP2)) continue;
+
+                match.score1 = saved.score1;
+                match.score2 = saved.score2;
+                match.winner = saved.score1 > saved.score2 ? currentP1 :
+                    (saved.score2 > saved.score1 ? currentP2 : null);
+                appliedKeys.add(saved.key());
+                changed = true;
+            }
+
+            if (changed) {
+                propagateLosersToLosersBracket(participantNames);
+                autoAdvanceEmptyMatchesInLosersBracket(participantNames);
+            }
+        }
+
+        if (savedGrandFinal != null && grandFinalMatch != null) {
+            String currentP1 = getLosersName(grandFinalMatch.p1, participantNames);
+            String currentP2 = getLosersName(grandFinalMatch.p2, participantNames);
+            if (savedGrandFinal.matchesParticipants(currentP1, currentP2)) {
+                grandFinalMatch.score1 = savedGrandFinal.score1;
+                grandFinalMatch.score2 = savedGrandFinal.score2;
+                grandFinalMatch.winner = savedGrandFinal.score1 > savedGrandFinal.score2 ? currentP1 :
+                    (savedGrandFinal.score2 > savedGrandFinal.score1 ? currentP2 : null);
+            }
+        }
+    }
+
+    private Match findTreeMatch(String treeId, int roundIdx, int matchIdx) {
+        RepechageTree tree = findTreeById(treeId);
+        if (tree == null || roundIdx < 0 || roundIdx >= tree.rounds.size()) return null;
+        for (Match match : tree.rounds.get(roundIdx)) {
+            if (match.matchIdx == matchIdx) {
+                return match;
+            }
+        }
+        return null;
     }
     
     // Propagate losers from main bracket to repechage trees
