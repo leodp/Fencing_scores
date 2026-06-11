@@ -1,5 +1,20 @@
 # Changelog
 
+## [V2.1 - 2026-06-11]
+
+### KO Page - 3:4 Popup Name Resolution
+- Fixed score popup titles for main KO matches to resolve bracket references (`W*` / `L*`) using the same round-aware logic as KO box labels
+- Fixed Third Place (`3:4`) popup showing placeholder refs like `L1 Vs L2`; popup now shows the same participant names already visible in the `3:4` box
+- Verified popup name resolution remains correct in other KO modi (Quick KO and Mix-Rounds use dedicated group dialogs with resolved names)
+
+### KO with Repechage - EMPTY Propagation Stability
+- Fixed repechage reference resolution for `EMPTY`-heavy brackets so `EMPTY vs EMPTY` matches resolve deterministically instead of staying as unresolved placeholders (e.g. `L1.1 Vs L1.2`)
+- Fixed propagation chain for `EMPTY` scenarios by treating unresolved `EMPTY` winners/losers as concrete `Empty` values, allowing downstream boxes to update correctly
+- Preserved displayed `EMPTY Vs EMPTY` result as `0:0` while still enabling forward propagation
+
+### Round Page - Late Missing Bout Threshold
+- Updated late-missing-bout highlight threshold from `<= 25%` to `<= 35%` (highlight color remains `#B0B0B0`)
+
 ## [V2.0 - 2026-05-22]
 
 ### KO Ranking - Correct Positions for Unplayed Matches

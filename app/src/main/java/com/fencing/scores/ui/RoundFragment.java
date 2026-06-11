@@ -650,7 +650,7 @@ public class RoundFragment extends Fragment {
         // Help text logic will be refactored into a reusable method below
     }
 
-    // When the remaining unplayed valid bouts are <= 25%, highlight those missing bouts.
+    // When the remaining unplayed valid bouts are <= 35%, highlight those missing bouts.
     private boolean shouldHighlightRemainingBouts(String[] participantNames, int[][] boutResults, int nrPart) {
         int totalValidBouts = 0;
         int missingBouts = 0;
@@ -676,7 +676,7 @@ public class RoundFragment extends Fragment {
         }
         if (totalValidBouts == 0 || missingBouts == 0) return false;
         double remainingPercent = (missingBouts * 100.0) / totalValidBouts;
-        return remainingPercent <= 25.0;
+        return remainingPercent <= 35.0;
     }
 
     private TableRow createHeaderRow(int nrPart) {
@@ -989,7 +989,7 @@ public class RoundFragment extends Fragment {
                         boutBgColor = mixWithWhite(currentPair[0]);
                     }
                 }
-                // If valid bouts are almost finished (<=25% missing), mark still-missing valid bouts in gray.
+                // If valid bouts are almost finished (<=35% missing), mark still-missing valid bouts in gray.
                 if (highlightRemainingBouts && nameValid && !(score >= 0 && oppScore >= 0)) {
                     boutBgColor = 0xFFB0B0B0;
                 }

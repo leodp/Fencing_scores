@@ -1725,6 +1725,20 @@ public class KOFragment extends Fragment {
         return getKOName(ref, names);
     }
 
+    // Find the round index for a main-bracket match instance.
+    // Needed so popup titles resolve W/L refs the same way as rendered boxes.
+    private int findMainRoundIndexForMatch(Match targetMatch) {
+        if (targetMatch == null || koRounds == null) return -1;
+        for (int r = 0; r < koRounds.size(); r++) {
+            List<Match> round = koRounds.get(r);
+            if (round == null) continue;
+            for (Match m : round) {
+                if (m == targetMatch) return r;
+            }
+        }
+        return -1;
+    }
+
     // Generate timestamped filename: prefix_YYYYMMDD_hh.mm.ss.csv
     private String generateTimestampedFilename(String prefix) {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HH.mm.ss", java.util.Locale.US);
@@ -3518,8 +3532,13 @@ public class KOFragment extends Fragment {
                 getKOName(resolveKORef(match.p2, koRounds, roundIndex), participantNames) :
                 getLosersName(match.p2, participantNames);
 
-            boolean p1Real = p1Name != null && !p1Name.equals("Empty") && !isPlaceholderName(p1Name);
-            boolean p2Real = p2Name != null && !p2Name.equals("Empty") && !isPlaceholderName(p2Name);
+            boolean p1IsEmpty = "Empty".equals(p1Name);
+            boolean p2IsEmpty = "Empty".equals(p2Name);
+            if (p1IsEmpty && p2IsEmpty) return "Empty";
+            if (p1IsEmpty ^ p2IsEmpty) return "Empty";
+
+            boolean p1Real = p1Name != null && !isPlaceholderName(p1Name) && !p1IsEmpty;
+            boolean p2Real = p2Name != null && !isPlaceholderName(p2Name) && !p2IsEmpty;
             if (!p1Real || !p2Real) return ref;
 
             String winner = null;
@@ -3589,8 +3608,14 @@ public class KOFragment extends Fragment {
 
             String p1Name = getLosersName(match.p1, participantNames);
             String p2Name = getLosersName(match.p2, participantNames);
-            boolean p1Real = p1Name != null && !p1Name.equals("Empty") && !isPlaceholderName(p1Name);
-            boolean p2Real = p2Name != null && !p2Name.equals("Empty") && !isPlaceholderName(p2Name);
+            boolean p1IsEmpty = "Empty".equals(p1Name);
+            boolean p2IsEmpty = "Empty".equals(p2Name);
+            if (p1IsEmpty && p2IsEmpty) return "Empty";
+            if (p1IsEmpty && !p2IsEmpty) return p2Name;
+            if (!p1IsEmpty && p2IsEmpty) return p1Name;
+
+            boolean p1Real = p1Name != null && !isPlaceholderName(p1Name);
+            boolean p2Real = p2Name != null && !isPlaceholderName(p2Name);
 
             if (p1Real && p2Real) {
                 if (match.score1 > match.score2) return p1Name;
@@ -3744,13 +3769,17 @@ public class KOFragment extends Fragment {
 
     // Show dialog to enter match result
     private void showMatchDialog(Match match, String[] participantNames) {
-        // For losers bracket matches, use getLosersName which resolves L_/W_ references
-        String p1Name = match.isLosers ? 
-            getLosersName(match.p1, participantNames) : 
-            getKOName(match.p1, participantNames);
-        String p2Name = match.isLosers ? 
-            getLosersName(match.p2, participantNames) : 
-            getKOName(match.p2, participantNames);
+        // For main bracket matches, resolve W/L refs using the same round-aware path as KO box rendering.
+        int roundIdx = match.isLosers ? -1 : findMainRoundIndexForMatch(match);
+        String p1Ref = (roundIdx >= 0) ? resolveKORef(match.p1, koRounds, roundIdx) : match.p1;
+        String p2Ref = (roundIdx >= 0) ? resolveKORef(match.p2, koRounds, roundIdx) : match.p2;
+
+        String p1Name = match.isLosers ?
+            getLosersName(match.p1, participantNames) :
+            getKOName(p1Ref, participantNames);
+        String p2Name = match.isLosers ?
+            getLosersName(match.p2, participantNames) :
+            getKOName(p2Ref, participantNames);
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
         builder.setTitle(p1Name.toUpperCase() + "      Vs " + p2Name.toUpperCase());
 
@@ -3948,13 +3977,17 @@ public class KOFragment extends Fragment {
 
     // Show second score selection popup for KO
     private void showSecondScoreDialog(Match match, String[] participantNames, int score1) {
-        // For losers bracket matches, use getLosersName which resolves L_/W_ references
-        String p1Name = match.isLosers ? 
-            getLosersName(match.p1, participantNames) : 
-            getKOName(match.p1, participantNames);
-        String p2Name = match.isLosers ? 
-            getLosersName(match.p2, participantNames) : 
-            getKOName(match.p2, participantNames);
+        // Keep popup names in sync with the names shown on KO boxes.
+        int roundIdx = match.isLosers ? -1 : findMainRoundIndexForMatch(match);
+        String p1Ref = (roundIdx >= 0) ? resolveKORef(match.p1, koRounds, roundIdx) : match.p1;
+        String p2Ref = (roundIdx >= 0) ? resolveKORef(match.p2, koRounds, roundIdx) : match.p2;
+
+        String p1Name = match.isLosers ?
+            getLosersName(match.p1, participantNames) :
+            getKOName(p1Ref, participantNames);
+        String p2Name = match.isLosers ?
+            getLosersName(match.p2, participantNames) :
+            getKOName(p2Ref, participantNames);
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
         builder.setTitle(p2Name.toUpperCase() + "      Vs " + p1Name.toUpperCase());
 
@@ -5266,6 +5299,7 @@ public class KOFragment extends Fragment {
         String p1Name = p1.equals("Empty") || p1.equals("-") ? "Empty" : p1;
         String p2Name = p2.equals("Empty") || p2.equals("-") ? "Empty" : p2;
         
+        if (p1Name.equals("Empty") && p2Name.equals("Empty")) return "Empty";
         if (p1Name.equals("Empty") && !p2Name.equals("Empty")) return p2Name;
         if (!p1Name.equals("Empty") && p2Name.equals("Empty")) return p1Name;
         if (match.score1 > match.score2) return p1Name;
