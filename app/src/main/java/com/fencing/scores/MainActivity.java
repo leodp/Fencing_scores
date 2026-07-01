@@ -300,13 +300,29 @@ public class MainActivity extends AppCompatActivity {
         scoresViewModel.getNrRounds().observe(this, roundsValue -> {
             int rounds = roundsValue != null ? roundsValue : 1;
             int current = viewPager.getCurrentItem();
+            int oldRounds = pagerAdapter != null ? pagerAdapter.getRoundCount() : rounds;
+
+            int target;
+            if (current < oldRounds) {
+                // Round pages keep their index unless the current round is removed.
+                target = Math.min(current, rounds - 1);
+            } else if (current == oldRounds) {
+                // Merged page should remain Merged.
+                target = rounds;
+            } else if (current == oldRounds + 1) {
+                // KO page should remain KO.
+                target = rounds + 1;
+            } else {
+                // Final page should remain Final.
+                target = rounds + 2;
+            }
+
             // Rebind adapter so newly inserted Round pages are materialized reliably.
             MainPagerAdapter newAdapter = new MainPagerAdapter(this, rounds);
             viewPager.setAdapter(newAdapter);
             pagerAdapter = newAdapter;
             int maxPage = pagerAdapter.getItemCount() - 1;
-            int target = Math.min(current, maxPage);
-            viewPager.setCurrentItem(target, false);
+            viewPager.setCurrentItem(Math.max(0, Math.min(target, maxPage)), false);
         });
         
         // Attach gesture detector to ViewPager2's internal RecyclerView
@@ -480,27 +496,43 @@ public class MainActivity extends AppCompatActivity {
             File filesDir = getFilesDir();
             if (filesDir == null) return 1;
 
-            int maxRound = 1;
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^Fencing_backup_R(\\d+)\\.csv$");
-            File[] files = filesDir.listFiles();
-            if (files == null) return 1;
+            // Recover rounds from contiguous valid backups R1..Rn.
+            // Using max filename alone can overcount when stale files exist (e.g., R1 and R3 only).
+            int recovered = 0;
+            for (int r = 1; r <= ScoresViewModel.MAX_ROUNDS; r++) {
+                File f = new File(filesDir, "Fencing_backup_R" + r + ".csv");
+                if (!f.exists()) break;
+                if (!isUsableRoundBackup(f)) break;
+                recovered = r;
+            }
 
-            for (File f : files) {
-                if (f == null) continue;
-                String name = f.getName();
-                java.util.regex.Matcher m = pattern.matcher(name);
-                if (m.matches()) {
-                    try {
-                        int r = Integer.parseInt(m.group(1));
-                        if (r > maxRound) maxRound = r;
-                    } catch (NumberFormatException ignored) {
-                    }
+            if (recovered <= 0) {
+                // Legacy single-round backup fallback.
+                File legacy = new File(filesDir, "Fencing_backup.csv");
+                if (legacy.exists() && isUsableRoundBackup(legacy)) {
+                    recovered = 1;
                 }
             }
-            return Math.max(1, Math.min(ScoresViewModel.MAX_ROUNDS, maxRound));
+
+            return Math.max(1, Math.min(ScoresViewModel.MAX_ROUNDS, recovered > 0 ? recovered : 1));
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "detectRoundCountFromBackups error: " + e.getMessage());
             return 1;
+        }
+    }
+
+    private boolean isUsableRoundBackup(File file) {
+        if (file == null || !file.exists() || file.length() <= 0) return false;
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(new java.io.FileInputStream(file)));
+            String header = reader.readLine();
+            reader.close();
+            if (header == null) return false;
+            String h = header.trim();
+            if (h.isEmpty()) return false;
+            return h.contains("Nr") && h.contains("Name");
+        } catch (Exception e) {
+            return false;
         }
     }
 

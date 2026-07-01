@@ -49,6 +49,8 @@ public class ScoresViewModel extends ViewModel {
                     activeRoundCode = 1;
                     roundBoutResults.clear();
                     roundBoutResults.put(1, cloneMatrix(emptyResults));
+                    roundParticipantNames.clear();
+                    roundParticipantNames.put(1, emptyNames.clone());
                     roundColorCycleIndex.clear();
                     roundColorCycleIndex.put(1, 0);
                     colorCycleIndex.setValue(0);
@@ -77,6 +79,7 @@ public class ScoresViewModel extends ViewModel {
     private final MutableLiveData<Integer> colorCycleIndex = new MutableLiveData<>(0);
     private int activeRoundCode = 1;
     private final java.util.Map<Integer, int[][]> roundBoutResults = new java.util.HashMap<>();
+    private final java.util.Map<Integer, String[]> roundParticipantNames = new java.util.HashMap<>();
     private final java.util.Map<Integer, Integer> roundColorCycleIndex = new java.util.HashMap<>();
     
     // Final KO rankings: list of participant names in ranking order (1st, 2nd, 3rd, etc.)
@@ -88,6 +91,9 @@ public class ScoresViewModel extends ViewModel {
     public ScoresViewModel() {
         int[][] initial = boutResults.getValue();
         roundBoutResults.put(1, cloneMatrix(initial));
+        String[] initialNames = new String[DEFAULT_PARTICIPANTS];
+        for (int i = 0; i < DEFAULT_PARTICIPANTS; i++) initialNames[i] = "";
+        roundParticipantNames.put(1, initialNames);
         roundColorCycleIndex.put(1, 0);
     }
 
@@ -150,6 +156,10 @@ public class ScoresViewModel extends ViewModel {
             if (current != null) {
                 roundBoutResults.put(activeRoundCode, cloneMatrix(current));
             }
+            String[] names = participantNames.getValue();
+            if (names != null) {
+                roundParticipantNames.put(activeRoundCode, names.clone());
+            }
             Integer color = colorCycleIndex.getValue();
             roundColorCycleIndex.put(activeRoundCode, color != null ? color : 0);
         }
@@ -167,12 +177,18 @@ public class ScoresViewModel extends ViewModel {
             if (!roundBoutResults.containsKey(roundCode)) {
                 roundBoutResults.put(roundCode, createEmptyMatrix(n));
             }
+            if (!roundParticipantNames.containsKey(roundCode)) {
+                String[] emptyNames = new String[n];
+                for (int i = 0; i < n; i++) emptyNames[i] = "";
+                roundParticipantNames.put(roundCode, emptyNames);
+            }
             if (!roundColorCycleIndex.containsKey(roundCode)) {
                 int colorRound1 = roundColorCycleIndex.getOrDefault(1, 0);
                 roundColorCycleIndex.put(roundCode, colorRound1);
             }
             activeRoundCode = roundCode;
             boutResults.setValue(cloneMatrix(roundBoutResults.get(roundCode)));
+            participantNames.setValue(roundParticipantNames.get(roundCode).clone());
             colorCycleIndex.setValue(roundColorCycleIndex.getOrDefault(roundCode, 0));
         }
     }
@@ -190,11 +206,15 @@ public class ScoresViewModel extends ViewModel {
                 int colorRound1 = roundColorCycleIndex.getOrDefault(1, colorCycleIndex.getValue() != null ? colorCycleIndex.getValue() : 0);
                 for (int r = oldRounds + 1; r <= rounds; r++) {
                     roundBoutResults.put(r, createEmptyMatrix(n));
+                    String[] emptyNames = new String[n];
+                    for (int i = 0; i < n; i++) emptyNames[i] = "";
+                    roundParticipantNames.put(r, emptyNames);
                     roundColorCycleIndex.put(r, colorRound1);
                 }
             } else if (rounds < oldRounds) {
                 for (int r = oldRounds; r > rounds; r--) {
                     roundBoutResults.remove(r);
+                    roundParticipantNames.remove(r);
                     roundColorCycleIndex.remove(r);
                 }
                 if (activeRoundCode > rounds) {
@@ -203,7 +223,28 @@ public class ScoresViewModel extends ViewModel {
             }
 
             nrRounds.setValue(rounds);
-            switchToRound(activeRoundCode);
+
+            int[][] activeMatrix = roundBoutResults.get(activeRoundCode);
+            if (activeMatrix == null) {
+                activeMatrix = createEmptyMatrix(n);
+                roundBoutResults.put(activeRoundCode, activeMatrix);
+            }
+
+            String[] activeNames = roundParticipantNames.get(activeRoundCode);
+            if (activeNames == null) {
+                activeNames = new String[n];
+                for (int i = 0; i < n; i++) activeNames[i] = "";
+                roundParticipantNames.put(activeRoundCode, activeNames);
+            }
+
+            if (!roundColorCycleIndex.containsKey(activeRoundCode)) {
+                int colorRound1 = roundColorCycleIndex.getOrDefault(1, colorCycleIndex.getValue() != null ? colorCycleIndex.getValue() : 0);
+                roundColorCycleIndex.put(activeRoundCode, colorRound1);
+            }
+
+            boutResults.setValue(cloneMatrix(activeMatrix));
+            participantNames.setValue(activeNames.clone());
+            colorCycleIndex.setValue(roundColorCycleIndex.getOrDefault(activeRoundCode, 0));
         }
     }
 
@@ -211,6 +252,13 @@ public class ScoresViewModel extends ViewModel {
         synchronized (resizeLock) {
             int[][] m = roundBoutResults.get(roundCode);
             return cloneMatrix(m);
+        }
+    }
+
+    public String[] getRoundParticipantNamesSnapshot(int roundCode) {
+        synchronized (resizeLock) {
+            String[] names = roundParticipantNames.get(roundCode);
+            return names != null ? names.clone() : null;
         }
     }
 
@@ -248,6 +296,7 @@ public class ScoresViewModel extends ViewModel {
             }
 
             participantNames.setValue(newNames);
+            roundParticipantNames.put(activeRoundCode, newNames != null ? newNames.clone() : null);
             boutResults.setValue(cloneMatrix(roundBoutResults.get(activeRoundCode)));
         }
     }
@@ -286,8 +335,15 @@ public class ScoresViewModel extends ViewModel {
             for (int r = 1; r <= rounds; r++) {
                 int[][] src = roundBoutResults.get(r);
                 roundBoutResults.put(r, resizeMatrix(src, n));
+                String[] rn = roundParticipantNames.get(r);
+                String[] resizedNames = new String[n];
+                for (int i = 0; i < n; i++) {
+                    resizedNames[i] = (rn != null && i < rn.length && rn[i] != null) ? rn[i] : "";
+                }
+                roundParticipantNames.put(r, resizedNames);
             }
             boutResults.setValue(cloneMatrix(roundBoutResults.getOrDefault(activeRoundCode, newResults)));
+            participantNames.setValue(roundParticipantNames.getOrDefault(activeRoundCode, newNames).clone());
             // Now update nrPart last, so observers see fully resized arrays
             nrPart.setValue(n);
         }
@@ -295,48 +351,20 @@ public class ScoresViewModel extends ViewModel {
 
     public void setParticipantNames(String[] names) {
         synchronized (resizeLock) {
-            String[] oldNames = participantNames.getValue();
+            if (names == null) return;
             participantNames.setValue(names);
+            roundParticipantNames.put(activeRoundCode, names.clone());
+        }
+    }
 
-            if (names == null || names.length == 0) {
-                return;
+    // Update participant names without remapping matrices across rounds.
+    // Used by local round sorting flows to avoid symmetric all-round resorting.
+    public void setParticipantNamesDirect(String[] names) {
+        synchronized (resizeLock) {
+            participantNames.setValue(names);
+            if (names != null) {
+                roundParticipantNames.put(activeRoundCode, names.clone());
             }
-
-            persistActiveRoundData();
-            int rounds = getCurrentRoundCount();
-            int targetSize = names.length;
-
-            java.util.Map<String, Integer> oldNameToIndex = new java.util.HashMap<>();
-            if (oldNames != null) {
-                for (int i = 0; i < oldNames.length; i++) {
-                    String n = oldNames[i] != null ? oldNames[i].trim() : "";
-                    if (!n.isEmpty() && !oldNameToIndex.containsKey(n)) {
-                        oldNameToIndex.put(n, i);
-                    }
-                }
-            }
-
-            for (int r = 1; r <= rounds; r++) {
-                int[][] src = roundBoutResults.get(r);
-                int[][] dst = createEmptyMatrix(targetSize);
-                for (int i = 0; i < targetSize; i++) {
-                    String ni = names[i] != null ? names[i].trim() : "";
-                    Integer siObj = (!ni.isEmpty()) ? oldNameToIndex.get(ni) : null;
-                    int si = (siObj != null) ? siObj : i;
-                    if (src == null || si < 0 || si >= src.length || src[si] == null) continue;
-
-                    for (int j = 0; j < targetSize; j++) {
-                        String nj = names[j] != null ? names[j].trim() : "";
-                        Integer sjObj = (!nj.isEmpty()) ? oldNameToIndex.get(nj) : null;
-                        int sj = (sjObj != null) ? sjObj : j;
-                        if (sj < 0 || sj >= src[si].length) continue;
-                        dst[i][j] = src[si][sj];
-                    }
-                }
-                roundBoutResults.put(r, dst);
-            }
-
-            boutResults.setValue(cloneMatrix(roundBoutResults.getOrDefault(activeRoundCode, createEmptyMatrix(targetSize))));
         }
     }
 
@@ -344,10 +372,8 @@ public class ScoresViewModel extends ViewModel {
         synchronized (resizeLock) {
             if (index < 0) return;
             persistActiveRoundData();
-            int rounds = getCurrentRoundCount();
-            for (int r = 1; r <= rounds; r++) {
-                int[][] m = roundBoutResults.get(r);
-                if (m == null || index >= m.length) continue;
+            int[][] m = roundBoutResults.get(activeRoundCode);
+            if (m != null && index < m.length) {
                 for (int j = 0; j < m[index].length; j++) {
                     m[index][j] = -1;
                 }
@@ -356,7 +382,7 @@ public class ScoresViewModel extends ViewModel {
                         m[i][index] = -1;
                     }
                 }
-                roundBoutResults.put(r, m);
+                roundBoutResults.put(activeRoundCode, m);
             }
             boutResults.setValue(cloneMatrix(roundBoutResults.getOrDefault(activeRoundCode, createEmptyMatrix(nrPart.getValue() != null ? nrPart.getValue() : DEFAULT_PARTICIPANTS))));
         }

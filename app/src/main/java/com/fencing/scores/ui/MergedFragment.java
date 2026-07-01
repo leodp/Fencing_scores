@@ -154,14 +154,17 @@ public class MergedFragment extends Fragment {
                                                 String name = tokens[1].trim();
                                                 if (name != null && !name.isEmpty()) {
                                                     int nr = tokens.length > 0 ? parseIntSafe(tokens[0]) : loadedRows.size() + 1;
-                                                    int victories = tokens.length > 2 ? parseIntSafe(tokens[2]) : 0;
-                                                    int given = tokens.length > 3 ? parseIntSafe(tokens[3]) : 0;
-                                                    int received = tokens.length > 4 ? parseIntSafe(tokens[4]) : 0;
-                                                    int index = tokens.length > 5 ? parseIntSafe(tokens[5]) : 0;
-                                                    int percent = tokens.length > 6 ? parseIntSafe(tokens[6]) : 0;
-                                                    int p = tokens.length > 7 ? parseIntSafe(tokens[7]) : 0;
-                                                    Integer finalPos = tokens.length > 8 && !tokens[8].trim().isEmpty() ? parseIntSafe(tokens[8]) : null;
-                                                    loadedRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
+                                                    boolean hasMatchesColumn = header.contains(",#,") || header.contains(",Matches,");
+                                                    int base = hasMatchesColumn ? 3 : 2;
+                                                    int matches = hasMatchesColumn && tokens.length > 2 ? parseIntSafe(tokens[2]) : 0;
+                                                    int victories = tokens.length > base ? parseIntSafe(tokens[base]) : 0;
+                                                    int given = tokens.length > (base + 1) ? parseIntSafe(tokens[base + 1]) : 0;
+                                                    int received = tokens.length > (base + 2) ? parseIntSafe(tokens[base + 2]) : 0;
+                                                    int index = tokens.length > (base + 3) ? parseIntSafe(tokens[base + 3]) : 0;
+                                                    int percent = tokens.length > (base + 4) ? parseIntSafe(tokens[base + 4]) : 0;
+                                                    int p = tokens.length > (base + 5) ? parseIntSafe(tokens[base + 5]) : 0;
+                                                    Integer finalPos = tokens.length > (base + 6) && !tokens[base + 6].trim().isEmpty() ? parseIntSafe(tokens[base + 6]) : null;
+                                                    loadedRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, "A", finalPos));
                                                 }
                                             }
                                         }
@@ -237,11 +240,12 @@ public class MergedFragment extends Fragment {
                 java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
                 java.io.FileWriter writer = new java.io.FileWriter(backupFile, false);
                 // Write header
-                writer.write("Nr,Name,V,→,←,I,%,P,FinalPos\n");
+                writer.write("Nr,Name,#,V,→,←,I,%,P,FinalPos\n");
                 for (Row r : rows) {
                     writer.write(
                         r.nr + "," +
                         (r.name != null ? r.name : "") + "," +
+                        r.matches + "," +   // #
                         r.victories + "," + // V
                         r.given + "," +     // →
                         r.received + "," +  // ←
@@ -285,11 +289,12 @@ public class MergedFragment extends Fragment {
                 }
                 java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(os);
                 // Write header - same format as backup
-                writer.write("Nr,Name,V,→,←,I,%,P,FinalPos\n");
+                writer.write("Nr,Name,#,V,→,←,I,%,P,FinalPos\n");
                 for (Row r : rows) {
                     writer.write(
                         r.nr + "," +
                         (r.name != null ? r.name : "") + "," +
+                        r.matches + "," +
                         r.victories + "," +
                         r.given + "," +
                         r.received + "," +
@@ -308,7 +313,7 @@ public class MergedFragment extends Fragment {
                 android.util.Log.e("MergedFragment", "Save CSV failed: " + e.getMessage());
             }
         }
-    private static final String[] HEADERS = {"Nr", "Name", "V", "→", "←", "I", "%", "P", "FinalPos"};
+    private static final String[] HEADERS = {"Nr", "Name", "#", "V", "→", "←", "I", "%", "P", "Grp", "FinalPos"};
     private TableLayout tableLayout;
     private TableLayout tableLayoutRight;  // Right side table for split view
     private Button replaceCsvBtn, addCsvBtn, reloadBtn;
@@ -317,17 +322,32 @@ public class MergedFragment extends Fragment {
     private boolean didRestore = false;
     private boolean nameSortAscending = true;
     private boolean pSortAscending = true;
+    private boolean grpSortAscending = true;
     private boolean finalPosSortAscending = true;
+    private boolean mixedGroupsDetected = false;
+    private boolean reloadedDistinctGroupsMerged = false;
 
     static class Row {
         int nr;
         String name;
+        int matches;
         int victories, given, received, index, percent, p;
+        String grp;
         Integer finalPos;
-        Row(int nr, String name, int victories, int given, int received, int index, int percent, int p, Integer finalPos) {
+        Row(int nr, String name, int matches, int victories, int given, int received, int index, int percent, int p, String grp, Integer finalPos) {
             this.nr = nr; this.name = name; this.victories = victories; this.given = given; this.received = received;
-            this.index = index; this.percent = percent; this.p = p; this.finalPos = finalPos;
+            this.matches = matches;
+            this.index = index; this.percent = percent; this.p = p; this.grp = grp != null ? grp : "A"; this.finalPos = finalPos;
         }
+    }
+
+    static class Agg {
+        int given;
+        int received;
+        int victories;
+        int boutsWon;
+        int boutsLost;
+        int matches;
     }
 
     @Nullable
@@ -423,9 +443,16 @@ public class MergedFragment extends Fragment {
 
         // RELOAD always fetches from RoundFragment
         reloadBtn.setOnClickListener(v -> {
-            // android.util.Log.v("MergedFragment", "RELOAD button pressed - loading from RoundFragment");
-            useCsvOnly = false;
-            loadRoundData();
+            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("Reload from Rounds")
+                .setMessage("Reload Merged data from all Round pages? Current Merged edits will be overwritten.")
+                .setPositiveButton("Reload", (dialog, which) -> {
+                    // android.util.Log.v("MergedFragment", "RELOAD confirmed - loading from RoundFragment");
+                    useCsvOnly = false;
+                    loadRoundData();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
         });
         replaceCsvBtn.setOnClickListener(v -> selectCsvFile(1001));
         addCsvBtn.setOnClickListener(v -> selectCsvFile(1002));
@@ -476,16 +503,18 @@ public class MergedFragment extends Fragment {
             } else {
                 isMergedBackup = true;
             }
-            int idxV = -1, idxGiven = -1, idxReceived = -1, idxIndex = -1, idxPercent = -1, idxP = -1, idxFinalPos = -1;
+            int idxMatches = -1, idxV = -1, idxGiven = -1, idxReceived = -1, idxIndex = -1, idxPercent = -1, idxP = -1, idxGrp = -1, idxFinalPos = -1;
             for (int i = 0; i < header.length; i++) {
                 sb.append("Header[").append(i).append("] = '").append(header[i]).append("'\n");
                 String h = header[i].trim();
-                if (h.equals("V")) idxV = i;
+                if (h.equals("#") || h.equalsIgnoreCase("Matches")) idxMatches = i;
+                else if (h.equals("V")) idxV = i;
                 else if (h.equals("→") || h.equals("->")) idxGiven = i;
                 else if (h.equals("←") || h.equals("<-")) idxReceived = i;
                 else if (h.equals("I")) idxIndex = i;
                 else if (h.equals("%")) idxPercent = i;
                 else if (h.equals("P")) idxP = i;
+                else if (h.equals("Grp")) idxGrp = i;
                 else if (h.equals("FinalPos")) idxFinalPos = i;
             }
             String line;
@@ -521,12 +550,14 @@ public class MergedFragment extends Fragment {
                 // Relax validation: allow empty participant names
                 try {
                     int nr = parseIntSafe(tokens[0]);
+                    int matches = (idxMatches >= 0 && idxMatches < tokens.length) ? parseIntSafe(tokens[idxMatches]) : 0;
                     int victories = (idxV >= 0 && idxV < tokens.length) ? parseIntSafe(tokens[idxV]) : 0;
                     int given = (idxGiven >= 0 && idxGiven < tokens.length) ? parseIntSafe(tokens[idxGiven]) : 0;
                     int received = (idxReceived >= 0 && idxReceived < tokens.length) ? parseIntSafe(tokens[idxReceived]) : 0;
                     int index = (idxIndex >= 0 && idxIndex < tokens.length) ? parseIntSafe(tokens[idxIndex]) : 0;
                     int percent = (idxPercent >= 0 && idxPercent < tokens.length) ? parseIntSafe(tokens[idxPercent]) : 0;
                     int p = (idxP >= 0 && idxP < tokens.length) ? parseIntSafe(tokens[idxP]) : 0;
+                    String grp = (idxGrp >= 0 && idxGrp < tokens.length && !tokens[idxGrp].trim().isEmpty()) ? tokens[idxGrp].trim() : "A";
                     Integer finalPos = null;
                     if (idxFinalPos >= 0 && idxFinalPos < tokens.length) {
                         try {
@@ -534,8 +565,8 @@ public class MergedFragment extends Fragment {
                             if (fp != 0) finalPos = fp;
                         } catch (Exception e) { finalPos = null; }
                     }
-                    loadedRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
-                                        // android.util.Log.v("MergedFragment", "Row added: Nr=" + nr + ", Name='" + name + "', V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
+                    loadedRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
+                                        // android.util.Log.v("MergedFragment", "Row added: Nr=" + nr + ", Name='" + name + "', V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", Grp=" + grp + ", FinalPos=" + finalPos);
                     // android.util.Log.i("MergedFragment", "CSV line " + lineNum + " parsed: nr=" + nr + ", name=" + name + ", V=" + victories + ", ->=" + given + ", <-=" + received + ", I=" + index + ", %=" + percent + ", P=" + p);
                 } catch (Exception parseEx) {
                     android.util.Log.e("MergedFragment", "CSV line " + lineNum + " parse error: " + parseEx.getMessage());
@@ -549,14 +580,17 @@ public class MergedFragment extends Fragment {
                 // Recalculate → and ← for each participant from bout results
                 for (int i = 0; i < loadedRows.size(); i++) {
                     int given = 0, received = 0;
+                    int matches = 0;
                     for (int j = 0; j < restoredBoutResults.length; j++) {
                         if (i != j && restoredBoutResults[i][j] >= 0 && restoredBoutResults[j][i] >= 0) {
                             given += restoredBoutResults[i][j];
                             received += restoredBoutResults[j][i];
+                            matches++;
                         }
                     }
                     loadedRows.get(i).given = given;
                     loadedRows.get(i).received = received;
+                    loadedRows.get(i).matches = matches;
                 }
             }
             // For Merged backup, keep the values as loaded from CSV (do not recalculate)
@@ -583,6 +617,415 @@ public class MergedFragment extends Fragment {
     // Helper to safely parse integers
     private int parseIntSafe(String s) {
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return 0; }
+    }
+
+    private int inferMatches(int victories, int percent) {
+        if (victories <= 0) return 0;
+        if (percent <= 0) return victories;
+        int estimated = (int) Math.round((victories * 100.0) / percent);
+        return Math.max(victories, estimated);
+    }
+
+    private String normalizeName(String name) {
+        return name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private java.util.Set<String> currentNameSet() {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (Row r : rows) {
+            String n = normalizeName(r.name);
+            if (!n.isEmpty()) out.add(n);
+        }
+        return out;
+    }
+
+    private boolean hasNameOverlap(java.util.List<Row> imported) {
+        java.util.Set<String> existing = currentNameSet();
+        for (Row r : imported) {
+            String n = normalizeName(r.name);
+            if (!n.isEmpty() && existing.contains(n)) return true;
+        }
+        return false;
+    }
+
+    private void renumberRows() {
+        for (int i = 0; i < rows.size(); i++) {
+            rows.get(i).nr = i + 1;
+        }
+    }
+
+    private void refreshRowDerivedMetrics() {
+        for (Row r : rows) {
+            r.index = r.given - r.received;
+            r.percent = r.matches > 0 ? (int) Math.round((r.victories * 100.0) / r.matches) : 0;
+        }
+    }
+
+    private void recalculatePFromPerformance() {
+        java.util.List<int[]> statsForRanking = new java.util.ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            Row r = rows.get(i);
+            if (r.name != null && !r.name.trim().isEmpty() && r.matches > 0) {
+                statsForRanking.add(new int[]{i, r.percent, r.index, r.given});
+            } else {
+                r.p = 0;
+            }
+        }
+
+        statsForRanking.sort((a, b) -> {
+            int cmp = Integer.compare(b[1], a[1]);
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(b[2], a[2]);
+            if (cmp != 0) return cmp;
+            return Integer.compare(b[3], a[3]);
+        });
+
+        int pos = 1;
+        for (int i = 0; i < statsForRanking.size(); i++) {
+            if (i > 0) {
+                int[] prev = statsForRanking.get(i - 1);
+                int[] curr = statsForRanking.get(i);
+                boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
+                if (!same) pos = i + 1;
+            }
+            rows.get(statsForRanking.get(i)[0]).p = pos;
+        }
+    }
+
+    private java.util.Map<String, Integer> captureGroupsFromCurrentPOrder() {
+        java.util.Map<String, Integer> nameToGroup = new java.util.LinkedHashMap<>();
+        int groupId = 1;
+        int prevP = -1;
+
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) continue;
+            // A new disjoint group starts when P restarts from 1 after a completed group.
+            if (prevP > 1 && r.p == 1) {
+                groupId++;
+            }
+            if (!nameToGroup.containsKey(key)) {
+                nameToGroup.put(key, groupId);
+            }
+            if (r.p > 0) prevP = r.p;
+        }
+        return nameToGroup;
+    }
+
+    // Convert group ID (1, 2, 3, ...) to letter label (A, B, C, ...)
+    private String groupIdToLabel(int groupId) {
+        if (groupId < 1) return "A";
+        return String.valueOf((char) ('A' + groupId - 1));
+    }
+
+    // Assign group labels to all rows based on nameToGroup mapping
+    private void assignGroupLabels(java.util.Map<String, Integer> nameToGroup) {
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) {
+                r.grp = "A";
+            } else {
+                Integer groupId = nameToGroup.get(key);
+                r.grp = groupIdToLabel(groupId != null ? groupId : 1);
+            }
+        }
+    }
+
+    // Extract participant names for each group from current rows
+    private java.util.Map<Integer, java.util.Set<String>> getGroupCompositions(java.util.Map<String, Integer> nameToGroup) {
+        java.util.Map<Integer, java.util.Set<String>> groupCompositions = new java.util.LinkedHashMap<>();
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) continue;
+            Integer groupId = nameToGroup.get(key);
+            if (groupId != null) {
+                groupCompositions.computeIfAbsent(groupId, k -> new java.util.HashSet<>()).add(key);
+            }
+        }
+        return groupCompositions;
+    }
+
+    private String normalizeGroupLabel(String grp) {
+        String g = grp == null ? "" : grp.trim();
+        return g.isEmpty() ? "A" : g.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private int groupLabelToId(String grp) {
+        String g = normalizeGroupLabel(grp);
+        char c = g.charAt(0);
+        if (c >= 'A' && c <= 'Z') return c - 'A' + 1;
+        try {
+            int parsed = Integer.parseInt(g);
+            return parsed > 0 ? parsed : 1;
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
+    // Prefer explicit Grp labels if present; fallback to P-order inference for old data.
+    private java.util.Map<String, Integer> captureGroupsFromRows() {
+        java.util.Map<String, Integer> nameToGroup = new java.util.LinkedHashMap<>();
+        boolean anyGrp = false;
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) continue;
+            String grp = r.grp == null ? "" : r.grp.trim();
+            if (!grp.isEmpty()) {
+                anyGrp = true;
+                nameToGroup.put(key, groupLabelToId(grp));
+            }
+        }
+        if (!anyGrp) {
+            return captureGroupsFromCurrentPOrder();
+        }
+
+        int maxId = 0;
+        for (Integer g : nameToGroup.values()) {
+            if (g != null && g > maxId) maxId = g;
+        }
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) continue;
+            if (!nameToGroup.containsKey(key)) {
+                nameToGroup.put(key, ++maxId);
+            }
+        }
+        return nameToGroup;
+    }
+
+    // Extract participant names for each group from imported rows
+    private java.util.Map<String, java.util.Set<String>> getImportedGroupCompositions(java.util.List<Row> importedRows) {
+        java.util.Map<String, java.util.Set<String>> importedCompositions = new java.util.LinkedHashMap<>();
+        for (Row r : importedRows) {
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) continue;
+            String grp = normalizeGroupLabel(r.grp);
+            importedCompositions.computeIfAbsent(grp, k -> new java.util.HashSet<>()).add(key);
+        }
+        return importedCompositions;
+    }
+
+    // Collapse is required when an imported group overlaps with an existing group but has a different composition,
+    // or when it mixes participants from more than one existing group.
+    private boolean requiresGroupCollapse(
+        java.util.Map<String, Integer> existingNameToGroup,
+        java.util.Map<Integer, java.util.Set<String>> existingCompositions,
+        java.util.Map<String, java.util.Set<String>> importedCompositions
+    ) {
+        for (java.util.Set<String> importedSet : importedCompositions.values()) {
+            java.util.Set<Integer> overlapped = new java.util.HashSet<>();
+            for (String participant : importedSet) {
+                Integer gid = existingNameToGroup.get(participant);
+                if (gid != null) overlapped.add(gid);
+            }
+
+            if (overlapped.isEmpty()) {
+                // Entirely new disjoint group is valid.
+                continue;
+            }
+            if (overlapped.size() > 1) {
+                // Imported group mixes participants belonging to different existing groups.
+                return true;
+            }
+
+            Integer gid = overlapped.iterator().next();
+            java.util.Set<String> existingSet = existingCompositions.get(gid);
+            if (existingSet == null || !existingSet.equals(importedSet)) {
+                // Same participant space but composition changed.
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void recalculatePByGroups(java.util.Map<String, Integer> nameToGroup) {
+        int maxGroup = 0;
+        for (Integer g : nameToGroup.values()) {
+            if (g != null && g > maxGroup) maxGroup = g;
+        }
+
+        java.util.Map<Integer, java.util.List<int[]>> statsByGroup = new java.util.LinkedHashMap<>();
+        java.util.Random random = new java.util.Random(System.nanoTime());
+        for (int i = 0; i < rows.size(); i++) {
+            Row r = rows.get(i);
+            String key = normalizeName(r.name);
+            if (key.isEmpty()) {
+                r.p = 0;
+                continue;
+            }
+
+            Integer group = nameToGroup.get(key);
+            if (group == null) {
+                group = ++maxGroup;
+                nameToGroup.put(key, group);
+            }
+
+            if (r.matches > 0) {
+                java.util.List<int[]> stats = statsByGroup.get(group);
+                if (stats == null) {
+                    stats = new java.util.ArrayList<>();
+                    statsByGroup.put(group, stats);
+                }
+                stats.add(new int[]{i, r.percent, r.index, r.given, r.received});
+            } else {
+                r.p = 0;
+            }
+        }
+
+        for (java.util.List<int[]> statsForRanking : statsByGroup.values()) {
+            statsForRanking.sort((a, b) -> {
+                int cmp = Integer.compare(b[1], a[1]);
+                if (cmp != 0) return cmp;
+                cmp = Integer.compare(b[2], a[2]);
+                if (cmp != 0) return cmp;
+                cmp = Integer.compare(b[3], a[3]);
+                if (cmp != 0) return cmp;
+                return Integer.compare(a[4], b[4]);
+            });
+
+            // Randomize ties inside each disjoint group, then assign unique sequential P.
+            java.util.List<int[]> randomized = new java.util.ArrayList<>();
+            for (int i = 0; i < statsForRanking.size(); ) {
+                int j = i + 1;
+                while (j < statsForRanking.size()) {
+                    int[] left = statsForRanking.get(i);
+                    int[] right = statsForRanking.get(j);
+                    boolean same = right[1] == left[1]
+                        && right[2] == left[2]
+                        && right[3] == left[3]
+                        && right[4] == left[4];
+                    if (!same) break;
+                    j++;
+                }
+                java.util.List<int[]> tieBlock = new java.util.ArrayList<>(statsForRanking.subList(i, j));
+                if (tieBlock.size() > 1) {
+                    java.util.Collections.shuffle(tieBlock, random);
+                }
+                randomized.addAll(tieBlock);
+                i = j;
+            }
+
+            int pos = 1;
+            for (int[] stat : randomized) {
+                rows.get(stat[0]).p = pos++;
+            }
+        }
+    }
+
+    private void applyImportedRows(java.util.List<Row> importedRows, boolean replace, String sourceLabel) {
+        if (replace) {
+            rows.clear();
+            rows.addAll(importedRows);
+            mixedGroupsDetected = false;
+            renumberRows();
+            refreshRowDerivedMetrics();
+            calculateFinalPositions();
+            backupMergedMatrix();
+            renderRows();
+            android.widget.Toast.makeText(getContext(), "Replaced " + importedRows.size() + " participants from " + sourceLabel, android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        java.util.Map<String, Integer> existingNameToGroup = captureGroupsFromRows();
+        java.util.Map<Integer, java.util.Set<String>> existingCompositions = getGroupCompositions(existingNameToGroup);
+        java.util.Map<String, java.util.Set<String>> importedCompositions = getImportedGroupCompositions(importedRows);
+
+        boolean collapseGroups = requiresGroupCollapse(existingNameToGroup, existingCompositions, importedCompositions);
+
+        java.util.Map<String, Row> byName = new java.util.LinkedHashMap<>();
+        for (Row r : rows) {
+            String key = normalizeName(r.name);
+            if (!key.isEmpty() && !byName.containsKey(key)) byName.put(key, r);
+        }
+
+        if (collapseGroups) {
+            // Merge by participant name, then flatten into one group with P=0.
+            for (Row in : importedRows) {
+                String key = normalizeName(in.name);
+                if (key.isEmpty()) continue;
+                Row cur = byName.get(key);
+                if (cur == null) {
+                    rows.add(in);
+                    byName.put(key, in);
+                } else {
+                    cur.matches += in.matches;
+                    cur.victories += in.victories;
+                    cur.given += in.given;
+                    cur.received += in.received;
+                }
+            }
+
+            for (Row r : rows) {
+                r.p = 0;
+                r.grp = "A";
+            }
+
+            mixedGroupsDetected = false;
+            renumberRows();
+            refreshRowDerivedMetrics();
+            calculateFinalPositions();
+            backupMergedMatrix();
+            renderRows();
+            android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Composition-compatible: map each imported group by participant set (name of group is irrelevant).
+        java.util.Map<String, Integer> importedGrpToTargetId = new java.util.LinkedHashMap<>();
+        int maxGroupId = 0;
+        for (Integer g : existingNameToGroup.values()) {
+            if (g != null && g > maxGroupId) maxGroupId = g;
+        }
+
+        for (java.util.Map.Entry<String, java.util.Set<String>> entry : importedCompositions.entrySet()) {
+            String importedGrp = entry.getKey();
+            java.util.Set<String> importedSet = entry.getValue();
+
+            Integer matchedExisting = null;
+            for (java.util.Map.Entry<Integer, java.util.Set<String>> existingEntry : existingCompositions.entrySet()) {
+                if (existingEntry.getValue().equals(importedSet)) {
+                    matchedExisting = existingEntry.getKey();
+                    break;
+                }
+            }
+
+            if (matchedExisting != null) {
+                importedGrpToTargetId.put(importedGrp, matchedExisting);
+            } else {
+                importedGrpToTargetId.put(importedGrp, ++maxGroupId);
+            }
+        }
+
+        // Merge imported rows and place each participant in its mapped group.
+        for (Row in : importedRows) {
+            String key = normalizeName(in.name);
+            if (key.isEmpty()) continue;
+            String importedGrp = normalizeGroupLabel(in.grp);
+            Integer targetGroupId = importedGrpToTargetId.get(importedGrp);
+            if (targetGroupId == null) targetGroupId = 1;
+
+            Row cur = byName.get(key);
+            if (cur == null) {
+                rows.add(in);
+                byName.put(key, in);
+            } else {
+                cur.matches += in.matches;
+                cur.victories += in.victories;
+                cur.given += in.given;
+                cur.received += in.received;
+            }
+            existingNameToGroup.put(key, targetGroupId);
+        }
+
+        mixedGroupsDetected = false;
+        renumberRows();
+        refreshRowDerivedMetrics();
+        recalculatePByGroups(existingNameToGroup);
+        assignGroupLabels(existingNameToGroup);
+        calculateFinalPositions();
+        backupMergedMatrix();
+        renderRows();
+        android.widget.Toast.makeText(getContext(), "Imported " + sourceLabel + ": merged by group composition", android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void selectCsvFile(int requestCode) {
@@ -687,8 +1130,9 @@ public class MergedFragment extends Fragment {
                             int index = given - received;
                             int percent = (boutsWon + boutsLost) > 0 ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100) : 0;
                             
+                            int matches = boutsWon + boutsLost;
                             // P is 0 initially, will be ranked below
-                            csvRows.add(new Row(nr, name, victories, given, received, index, percent, 0, null));
+                            csvRows.add(new Row(nr, name, matches, victories, given, received, index, percent, 0, "A", null));
                             if (name != null && !name.trim().isEmpty() && hasBout) {
                                 csvStatsForRanking.add(new int[]{csvRows.size() - 1, percent, index, given});
                             }
@@ -714,15 +1158,17 @@ public class MergedFragment extends Fragment {
                         }
                     } else {
                         // Merged format (no bout columns): use values directly from CSV
-                        int idxV = -1, idxGiven = -1, idxReceived = -1, idxIndex = -1, idxPercent = -1, idxP = -1, idxFinalPos = -1;
+                        int idxMatches = -1, idxV = -1, idxGiven = -1, idxReceived = -1, idxIndex = -1, idxPercent = -1, idxP = -1, idxGrp = -1, idxFinalPos = -1;
                         for (int i = 0; i < header.length; i++) {
                             String h = header[i].trim();
-                            if (h.equals("V")) idxV = i;
+                            if (h.equals("#") || h.equalsIgnoreCase("Matches")) idxMatches = i;
+                            else if (h.equals("V")) idxV = i;
                             else if (h.equals("→") || h.equals("->")) idxGiven = i;
                             else if (h.equals("←") || h.equals("<-")) idxReceived = i;
                             else if (h.equals("I")) idxIndex = i;
                             else if (h.equals("%")) idxPercent = i;
                             else if (h.equals("P")) idxP = i;
+                            else if (h.equals("Grp")) idxGrp = i;
                             else if (h.equals("FinalPos") || h.equals("Pos")) idxFinalPos = i;
                         }
                         
@@ -732,45 +1178,29 @@ public class MergedFragment extends Fragment {
                             
                             int nr = parseIntSafe(tokens[0]);
                             String name = tokens[1];
+                            int matches = (idxMatches >= 0 && idxMatches < tokens.length) ? parseIntSafe(tokens[idxMatches]) : 0;
                             int victories = (idxV >= 0 && idxV < tokens.length) ? parseIntSafe(tokens[idxV]) : 0;
                             int given = (idxGiven >= 0 && idxGiven < tokens.length) ? parseIntSafe(tokens[idxGiven]) : 0;
                             int received = (idxReceived >= 0 && idxReceived < tokens.length) ? parseIntSafe(tokens[idxReceived]) : 0;
                             int index = (idxIndex >= 0 && idxIndex < tokens.length) ? parseIntSafe(tokens[idxIndex]) : 0;
                             int percent = (idxPercent >= 0 && idxPercent < tokens.length) ? parseIntSafe(tokens[idxPercent]) : 0;
                             int p = (idxP >= 0 && idxP < tokens.length) ? parseIntSafe(tokens[idxP]) : 0;
+                            String grp = (idxGrp >= 0 && idxGrp < tokens.length && !tokens[idxGrp].trim().isEmpty()) ? tokens[idxGrp].trim() : "A";
+                            if (matches <= 0) matches = inferMatches(victories, percent);
                             Integer finalPos = null;
                             if (idxFinalPos >= 0 && idxFinalPos < tokens.length && !tokens[idxFinalPos].trim().isEmpty()) {
                                 finalPos = parseIntSafe(tokens[idxFinalPos]);
                             }
                             // P is kept as-is from CSV — never overwritten by FinalPos
                             
-                            csvRows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
-                            // android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", FinalPos=" + finalPos);
+                            csvRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
+                            // android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", Grp=" + grp + ", FinalPos=" + finalPos);
                         }
                     }
                     
                     // android.util.Log.i("MergedFragment", "CSV loaded: " + csvRows.size() + " rows");
                     
-                    if (requestCode == 1001) {
-                        // REPLACE: clear existing rows and use loaded rows
-                        rows.clear();
-                        rows.addAll(csvRows);
-                    } else if (requestCode == 1002) {
-                        // ADD: append loaded rows to existing, renumber
-                        int startNr = rows.size() + 1;
-                        for (int i = 0; i < csvRows.size(); i++) {
-                            Row r = csvRows.get(i);
-                            r.nr = startNr + i;
-                            rows.add(r);
-                        }
-                    }
-                    
-                    // Always recalculate FinalPos after loading
-                    calculateFinalPositions();
-                    backupMergedMatrix();
-                    renderRows();
-                    
-                    android.widget.Toast.makeText(getContext(), (requestCode == 1001 ? "Replaced" : "Added") + " " + csvRows.size() + " participants", android.widget.Toast.LENGTH_SHORT).show();
+                    applyImportedRows(csvRows, requestCode == 1001, "CSV");
                     
                 } catch (Exception e) {
                     android.util.Log.e("MergedFragment", "CSV load error: " + e.getMessage());
@@ -787,107 +1217,195 @@ public class MergedFragment extends Fragment {
         try {
             ScoresViewModel vm = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
             vm.persistActiveRoundData();
+            reloadedDistinctGroupsMerged = false;
 
             int rounds = vm.getNrRounds().getValue() != null ? vm.getNrRounds().getValue() : 1;
             int nrPart = vm.getNrPart().getValue() != null ? vm.getNrPart().getValue() : 0;
-            String[] participantNames = vm.getParticipantNames().getValue();
-            if (participantNames == null || nrPart <= 0) {
+            if (nrPart <= 0) {
                 android.widget.Toast.makeText(getContext(), "No Round data available", android.widget.Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            class Agg {
-                int given;
-                int received;
-                int victories;
-                int boutsWon;
-                int boutsLost;
-            }
+            java.util.List<java.util.List<Integer>> roundGroups = buildRoundGroups(vm, rounds, nrPart);
+            java.util.List<Row> loadedRows = new java.util.ArrayList<>();
 
-            java.util.Map<String, Agg> byName = new java.util.LinkedHashMap<>();
-            for (int i = 0; i < nrPart; i++) {
-                String name = participantNames[i] != null ? participantNames[i].trim() : "";
-                if (!name.isEmpty() && !byName.containsKey(name)) {
-                    byName.put(name, new Agg());
-                }
-            }
+            // Track which round group each participant belongs to
+            int groupIndex = 0;
+            for (java.util.List<Integer> groupRounds : roundGroups) {
+                String grpLabel = groupIdToLabel(groupIndex + 1); // Convert 0,1,2... to A,B,C...
+                java.util.Map<String, Agg> byName = new java.util.LinkedHashMap<>();
 
-            for (int r = 1; r <= rounds; r++) {
-                int[][] roundResults = vm.getRoundBoutResultsSnapshot(r);
-                if (roundResults == null) continue;
+                for (int roundCode : groupRounds) {
+                    int[][] roundResults = vm.getRoundBoutResultsSnapshot(roundCode);
+                    String[] participantNames = vm.getRoundParticipantNamesSnapshot(roundCode);
+                    if (roundResults == null || participantNames == null) continue;
 
-                for (int i = 0; i < nrPart; i++) {
-                    String nameI = participantNames[i] != null ? participantNames[i].trim() : "";
-                    if (nameI.isEmpty()) continue;
-                    Agg ai = byName.computeIfAbsent(nameI, k -> new Agg());
+                    for (int i = 0; i < nrPart; i++) {
+                        String name = i < participantNames.length && participantNames[i] != null ? participantNames[i].trim() : "";
+                        if (!name.isEmpty() && !byName.containsKey(name)) {
+                            byName.put(name, new Agg());
+                        }
+                    }
 
-                    for (int j = 0; j < nrPart; j++) {
-                        if (i == j) continue;
-                        String nameJ = participantNames[j] != null ? participantNames[j].trim() : "";
-                        if (nameJ.isEmpty()) continue;
+                    for (int i = 0; i < nrPart; i++) {
+                        String nameI = i < participantNames.length && participantNames[i] != null ? participantNames[i].trim() : "";
+                        if (nameI.isEmpty()) continue;
+                        Agg ai = byName.computeIfAbsent(nameI, k -> new Agg());
 
-                        boolean validI = i < roundResults.length && roundResults[i] != null && j < roundResults[i].length;
-                        boolean validJ = j < roundResults.length && roundResults[j] != null && i < roundResults[j].length;
-                        if (!validI || !validJ) continue;
-                        int s = roundResults[i][j];
-                        int o = roundResults[j][i];
-                        if (s < 0 || o < 0) continue;
+                        for (int j = 0; j < nrPart; j++) {
+                            if (i == j) continue;
+                            String nameJ = j < participantNames.length && participantNames[j] != null ? participantNames[j].trim() : "";
+                            if (nameJ.isEmpty()) continue;
 
-                        ai.given += s;
-                        ai.received += o;
-                        if (s > o) {
-                            ai.victories++;
-                            ai.boutsWon++;
-                        } else if (s < o) {
-                            ai.boutsLost++;
+                            boolean validI = i < roundResults.length && roundResults[i] != null && j < roundResults[i].length;
+                            boolean validJ = j < roundResults.length && roundResults[j] != null && i < roundResults[j].length;
+                            if (!validI || !validJ) continue;
+                            int s = roundResults[i][j];
+                            int o = roundResults[j][i];
+                            if (s < 0 || o < 0) continue;
+
+                            ai.given += s;
+                            ai.received += o;
+                            if (s > o) {
+                                ai.victories++;
+                                ai.boutsWon++;
+                            } else if (s < o) {
+                                ai.boutsLost++;
+                            }
+                            ai.matches++;
                         }
                     }
                 }
+
+                java.util.List<int[]> statsForRanking = new java.util.ArrayList<>();
+                java.util.List<String> names = new java.util.ArrayList<>(byName.keySet());
+                for (int i = 0; i < names.size(); i++) {
+                    String name = names.get(i);
+                    Agg a = byName.get(name);
+                    int index = a.given - a.received;
+                    int totalBouts = a.boutsWon + a.boutsLost;
+                    int percent = totalBouts > 0 ? (int) Math.round((double) a.boutsWon / totalBouts * 100.0) : 0;
+                    loadedRows.add(new Row(loadedRows.size() + 1, name, a.matches, a.victories, a.given, a.received, index, percent, 0, grpLabel, null));
+                    if (totalBouts > 0) {
+                        statsForRanking.add(new int[]{loadedRows.size() - 1, percent, index, a.given});
+                    }
+                }
+
+                statsForRanking.sort((a, b) -> {
+                    int cmp = Integer.compare(b[1], a[1]);
+                    if (cmp != 0) return cmp;
+                    cmp = Integer.compare(b[2], a[2]);
+                    if (cmp != 0) return cmp;
+                    return Integer.compare(b[3], a[3]);
+                });
+
+                int pos = 1;
+                for (int i = 0; i < statsForRanking.size(); i++) {
+                    if (i > 0) {
+                        int[] prev = statsForRanking.get(i - 1);
+                        int[] curr = statsForRanking.get(i);
+                        boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
+                        if (!same) pos = i + 1;
+                    }
+                    loadedRows.get(statsForRanking.get(i)[0]).p = pos;
+                }
+
+                groupIndex++;
             }
 
             rows.clear();
-            java.util.List<int[]> statsForRanking = new java.util.ArrayList<>();
-            java.util.List<String> names = new java.util.ArrayList<>(byName.keySet());
-            for (int i = 0; i < names.size(); i++) {
-                String name = names.get(i);
-                Agg a = byName.get(name);
-                int index = a.given - a.received;
-                int totalBouts = a.boutsWon + a.boutsLost;
-                int percent = totalBouts > 0 ? (int) Math.round((double) a.boutsWon / totalBouts * 100.0) : 0;
-                rows.add(new Row(i + 1, name, a.victories, a.given, a.received, index, percent, 0, null));
-                if (totalBouts > 0) {
-                    statsForRanking.add(new int[]{i, percent, index, a.given});
+            rows.addAll(loadedRows);
+
+            // Recalculate P within groups for proper within-group ranking
+            java.util.Map<String, Integer> nameToGroup = new java.util.LinkedHashMap<>();
+            for (Row r : rows) {
+                String key = normalizeName(r.name);
+                if (!key.isEmpty() && r.grp != null) {
+                    // Map group label (A, B, C) back to group ID (1, 2, 3)
+                    int groupId = (r.grp.length() > 0) ? (r.grp.charAt(0) - 'A' + 1) : 1;
+                    nameToGroup.put(key, groupId);
                 }
             }
-
-            statsForRanking.sort((a, b) -> {
-                int cmp = Integer.compare(b[1], a[1]);
-                if (cmp != 0) return cmp;
-                cmp = Integer.compare(b[2], a[2]);
-                if (cmp != 0) return cmp;
-                return Integer.compare(b[3], a[3]);
-            });
-
-            int pos = 1;
-            for (int i = 0; i < statsForRanking.size(); i++) {
-                if (i > 0) {
-                    int[] prev = statsForRanking.get(i - 1);
-                    int[] curr = statsForRanking.get(i);
-                    boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
-                    if (!same) pos = i + 1;
-                }
-                rows.get(statsForRanking.get(i)[0]).p = pos;
-            }
+            recalculatePByGroups(nameToGroup);
 
             calculateFinalPositions();
+            mixedGroupsDetected = false;
             useCsvOnly = false;
             backupMergedMatrix();
             renderRows();
             android.widget.Toast.makeText(getContext(), "Reloaded merged data from " + rounds + " round(s)", android.widget.Toast.LENGTH_SHORT).show();
+            if (reloadedDistinctGroupsMerged) {
+                android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_SHORT).show();
+            }
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Error aggregating rounds: " + e.getMessage());
             android.widget.Toast.makeText(getContext(), "Reload failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
+    }
+
+    private java.util.List<java.util.List<Integer>> buildRoundGroups(ScoresViewModel vm, int rounds, int nrPart) {
+        java.util.List<java.util.Set<String>> roundNameSets = new java.util.ArrayList<>();
+        for (int r = 1; r <= rounds; r++) {
+            java.util.Set<String> names = new java.util.LinkedHashSet<>();
+            String[] participantNames = vm.getRoundParticipantNamesSnapshot(r);
+            if (participantNames != null) {
+                for (int i = 0; i < nrPart && i < participantNames.length; i++) {
+                    String name = normalizeName(participantNames[i]);
+                    if (!name.isEmpty()) names.add(name);
+                }
+            }
+            roundNameSets.add(names);
+        }
+
+        // Rule:
+        // 1) exact same participant sets -> same group
+        // 2) disjoint sets -> separate groups
+        // 3) any overlap between non-equal sets -> collapse all rounds into one group
+        for (int i = 0; i < roundNameSets.size(); i++) {
+            for (int j = i + 1; j < roundNameSets.size(); j++) {
+                java.util.Set<String> left = roundNameSets.get(i);
+                java.util.Set<String> right = roundNameSets.get(j);
+                if (left.equals(right)) continue;
+                if (setsIntersect(left, right)) {
+                    reloadedDistinctGroupsMerged = true;
+                    java.util.List<java.util.List<Integer>> collapsed = new java.util.ArrayList<>();
+                    java.util.List<Integer> allRounds = new java.util.ArrayList<>();
+                    for (int r = 1; r <= rounds; r++) allRounds.add(r);
+                    collapsed.add(allRounds);
+                    return collapsed;
+                }
+            }
+        }
+
+        java.util.List<java.util.List<Integer>> groups = new java.util.ArrayList<>();
+        boolean[] assigned = new boolean[rounds];
+        for (int i = 0; i < rounds; i++) {
+            if (assigned[i]) continue;
+            java.util.List<Integer> group = new java.util.ArrayList<>();
+            group.add(i + 1);
+            assigned[i] = true;
+            for (int j = i + 1; j < rounds; j++) {
+                if (!assigned[j] && roundNameSets.get(i).equals(roundNameSets.get(j))) {
+                    group.add(j + 1);
+                    assigned[j] = true;
+                }
+            }
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    private boolean setsIntersect(java.util.Set<String> left, java.util.Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) return false;
+        if (left.size() > right.size()) {
+            java.util.Set<String> swap = left;
+            left = right;
+            right = swap;
+        }
+        for (String name : left) {
+            if (right.contains(name)) return true;
+        }
+        return false;
     }
 
     // Helper: set button background with rounded corners
@@ -912,7 +1430,7 @@ public class MergedFragment extends Fragment {
         boolean hadRealData = rows != null && rows.size() > 0;
         if (rows == null || rows.size() == 0) {
             rows = new java.util.ArrayList<>();
-            rows.add(new Row(1, "", 0, 0, 0, 0, 0, 0, null));
+            rows.add(new Row(1, "", 0, 0, 0, 0, 0, 0, 0, "A", null));
         }
         // Use dynamic color index from ViewModel (shared with RoundFragment)
         ScoresViewModel scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
@@ -932,19 +1450,35 @@ public class MergedFragment extends Fragment {
             // Set background and border for headers as in RoundFragment
             if (col == 0 || col == 1) {
                 tv.setBackground(makeBorderedCell(0xFFA0A0A0));
-            } else if (col >= 2 && col <= 6) {
+            } else if (col >= 2 && col <= 7) {
                 tv.setBackground(makeBorderedCell(pair[0]));
-            } else if (col == 7) {
+            } else if (col == 8) {
                 tv.setBackground(makeBorderedCell(pair[1]));
-            } else if (col == 8) { // FinalPos header styled as P
+            } else if (col == 9) { // Grp header styled as stats (pair[0])
+                tv.setBackground(makeBorderedCell(pair[0]));
+            } else if (col == 10) { // FinalPos header styled as P
                 tv.setBackground(makeBorderedCell(pair[1]));
             } else {
                 tv.setBackground(makeBorderedCell(Color.WHITE));
             }
             // Add long-press to all headers except P and FinalPos to navigate to KO page
-            if (!h.equals("P") && !h.equals("FinalPos")) {
+            if (!h.equals("P") && !h.equals("Grp") && !h.equals("FinalPos")) {
                 tv.setOnLongClickListener(v -> {
                     navigateToNextPage();
+                    return true;
+                });
+            }
+            if (h.equals("Grp")) {
+                tv.setLongClickable(true);
+                tv.setOnClickListener(v -> {
+                    toggleSortRowsByGrp();
+                    backupMergedMatrix();
+                    renderRows();
+                });
+                tv.setOnLongClickListener(v -> {
+                    toggleSortRowsByGrp();
+                    backupMergedMatrix();
+                    renderRows();
                     return true;
                 });
             }
@@ -1016,13 +1550,15 @@ public class MergedFragment extends Fragment {
                 switch (col) {
                     case 0: value = String.valueOf(row.nr); break;
                     case 1: value = row.name; break;
-                    case 2: value = String.valueOf(row.victories); break;
-                    case 3: value = String.valueOf(row.given); break;
-                    case 4: value = String.valueOf(row.received); break;
-                    case 5: value = String.valueOf(row.index); break;
-                    case 6: value = String.valueOf(row.percent); break;
-                    case 7: value = String.valueOf(row.p); break;
-                    case 8: value = row.finalPos != null ? String.valueOf(row.finalPos) : ""; break;
+                    case 2: value = String.valueOf(row.matches); break;
+                    case 3: value = String.valueOf(row.victories); break;
+                    case 4: value = String.valueOf(row.given); break;
+                    case 5: value = String.valueOf(row.received); break;
+                    case 6: value = String.valueOf(row.index); break;
+                    case 7: value = String.valueOf(row.percent); break;
+                    case 8: value = String.valueOf(row.p); break;
+                    case 9: value = row.grp != null ? row.grp : "A"; break;
+                    case 10: value = row.finalPos != null ? String.valueOf(row.finalPos) : ""; break;
                     default: value = "";
                 }
                 EditText cell = new EditText(getContext());
@@ -1040,8 +1576,8 @@ public class MergedFragment extends Fragment {
                     public void onDestroyActionMode(android.view.ActionMode mode) {}
                 });
                 final int rowIdx = i;
-                // FinalPos cells (col == 8): long press sorts by FinalPos
-                if (colIdx == 8) {
+                // FinalPos cells: long press sorts by FinalPos
+                if (colIdx == 10) {
                     cell.setBackground(makeBorderedCell(pair[1])); // Same color as FinalPos header
                     cell.setOnLongClickListener(v -> {
                         boolean asc = toggleSortRowsByFinalPos();
@@ -1049,9 +1585,16 @@ public class MergedFragment extends Fragment {
                         renderRows();
                         return true;
                     });
-                } else if (colIdx == 7) {
+                } else if (colIdx == 8) {
                     cell.setOnLongClickListener(v -> {
                         boolean asc = toggleSortRowsByP();
+                        backupMergedMatrix();
+                        renderRows();
+                        return true;
+                    });
+                } else if (colIdx == 9) {
+                    cell.setOnLongClickListener(v -> {
+                        toggleSortRowsByGrp();
                         backupMergedMatrix();
                         renderRows();
                         return true;
@@ -1096,7 +1639,7 @@ public class MergedFragment extends Fragment {
                         } else {
                             // Cells floor(N/2)+1 to N: ADD a new participant
                             int newNr = rows.size() + 1;
-                            rows.add(new Row(newNr, "", 0, 0, 0, 0, 0, 0, null));
+                            rows.add(new Row(newNr, "", 0, 0, 0, 0, 0, 0, 0, "A", null));
                             // android.util.Log.i("MergedFragment", "Added participant, now " + rows.size() + " rows");
                             backupMergedMatrix();
                             renderRows();
@@ -1105,8 +1648,8 @@ public class MergedFragment extends Fragment {
                     });
                 } else {
                 // FinalPos cells: no click editing
-                if (colIdx == 8) {
-                    // No click action for FinalPos cells
+                if (colIdx == 10 || colIdx == 9) {
+                    // No click action for Grp or FinalPos cells (calculated, not editable)
                 } else {
                 cell.setOnClickListener(v -> {
                     EditText input = new EditText(getContext());
@@ -1143,24 +1686,27 @@ public class MergedFragment extends Fragment {
                                 }
                                 break;
                             case 2:
-                                try { row.victories = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.matches = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 3:
-                                try { row.given = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.victories = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 4:
-                                try { row.received = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.given = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 5:
-                                try { row.index = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.received = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 6:
-                                try { row.percent = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.index = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 7:
-                                try { row.p = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                try { row.percent = Integer.parseInt(newVal); } catch (Exception ex) {}
                                 break;
                             case 8:
+                                try { row.p = Integer.parseInt(newVal); } catch (Exception ex) {}
+                                break;
+                            case 9:
                                 try { row.finalPos = Integer.parseInt(newVal); } catch (Exception ex) { row.finalPos = null; }
                                 break;
                         }
@@ -1205,19 +1751,33 @@ public class MergedFragment extends Fragment {
             // Set background and border for headers as in main table
             if (col == 0 || col == 1) {
                 tv.setBackground(makeBorderedCell(0xFFA0A0A0));
-            } else if (col >= 2 && col <= 6) {
+            } else if (col >= 2 && col <= 7) {
                 tv.setBackground(makeBorderedCell(pair[0]));
-            } else if (col == 7) {
-                tv.setBackground(makeBorderedCell(pair[1]));
             } else if (col == 8) {
+                tv.setBackground(makeBorderedCell(pair[1]));
+            } else if (col == 9) {
                 tv.setBackground(makeBorderedCell(pair[1]));
             } else {
                 tv.setBackground(makeBorderedCell(Color.WHITE));
             }
             // Add navigation long press for right table headers too
-            if (!h.equals("P") && !h.equals("FinalPos")) {
+            if (!h.equals("P") && !h.equals("Grp") && !h.equals("FinalPos")) {
                 tv.setOnLongClickListener(v -> {
                     navigateToNextPage();
+                    return true;
+                });
+            }
+            if (h.equals("Grp")) {
+                tv.setLongClickable(true);
+                tv.setOnClickListener(v -> {
+                    toggleSortRowsByGrp();
+                    backupMergedMatrix();
+                    renderRows();
+                });
+                tv.setOnLongClickListener(v -> {
+                    toggleSortRowsByGrp();
+                    backupMergedMatrix();
+                    renderRows();
                     return true;
                 });
             }
@@ -1272,6 +1832,24 @@ public class MergedFragment extends Fragment {
             }
         });
         pSortAscending = !pSortAscending;
+        return asc;
+    }
+
+    private boolean toggleSortRowsByGrp() {
+        final boolean asc = grpSortAscending;
+        java.util.Collections.sort(rows, new java.util.Comparator<Row>() {
+            @Override
+            public int compare(Row a, Row b) {
+                String ag = normalizeGroupLabel(a != null ? a.grp : null);
+                String bg = normalizeGroupLabel(b != null ? b.grp : null);
+                int cmp = asc ? ag.compareToIgnoreCase(bg) : bg.compareToIgnoreCase(ag);
+                if (cmp != 0) return cmp;
+                String an = a != null && a.name != null ? a.name.trim() : "";
+                String bn = b != null && b.name != null ? b.name.trim() : "";
+                return an.compareToIgnoreCase(bn);
+            }
+        });
+        grpSortAscending = !grpSortAscending;
         return asc;
     }
 
@@ -1357,22 +1935,25 @@ public class MergedFragment extends Fragment {
                                 return;
                             }
                             break;
-                        case 2: // Victories
+                        case 2: // Matches
+                            try { row.matches = Integer.parseInt(newVal); } catch (Exception ex) {}
+                            break;
+                        case 3: // Victories
                             try { row.victories = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
-                        case 3: // Given
+                        case 4: // Given
                             try { row.given = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
-                        case 4: // Received
+                        case 5: // Received
                             try { row.received = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
-                        case 5: // Index
+                        case 6: // Index
                             try { row.index = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
-                        case 6: // Percent
+                        case 7: // Percent
                             try { row.percent = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
-                        case 7: // P
+                        case 8: // P
                             try { row.p = Integer.parseInt(newVal); } catch (Exception ex) {}
                             break;
                     }
@@ -1436,28 +2017,39 @@ public class MergedFragment extends Fragment {
                 r.finalPos = null; // Not ranked
             }
         }
-        // Sort by percent DESC, then index DESC, then given DESC
+        // Sort by percent DESC, then index DESC, then given DESC, then received ASC
         java.util.Collections.sort(toRank, new java.util.Comparator<Row>() {
             public int compare(Row a, Row b) {
                 int cmp = Integer.compare(b.percent, a.percent);
                 if (cmp != 0) return cmp; // DESC: higher percent first
                 cmp = Integer.compare(b.index, a.index);
                 if (cmp != 0) return cmp; // DESC: higher index first
-                return Integer.compare(b.given, a.given); // DESC: higher given first
+                cmp = Integer.compare(b.given, a.given);
+                if (cmp != 0) return cmp; // DESC: higher given first
+                return Integer.compare(a.received, b.received); // ASC: lower received first
             }
         });
-        int pos = 1;
+
+        // Randomize complete ties and assign unique sequential FinalPos values.
+        java.util.Random random = new java.util.Random(System.nanoTime());
+        java.util.List<Row> randomized = new java.util.ArrayList<>();
         for (int i = 0; i < toRank.size(); ) {
             int j = i + 1;
             while (j < toRank.size() &&
                    toRank.get(j).percent == toRank.get(i).percent &&
                    toRank.get(j).index == toRank.get(i).index &&
-                   toRank.get(j).given == toRank.get(i).given) j++;
-            for (int k = i; k < j; k++) {
-                toRank.get(k).finalPos = pos;
+                   toRank.get(j).given == toRank.get(i).given &&
+                   toRank.get(j).received == toRank.get(i).received) j++;
+            java.util.List<Row> tieBlock = new java.util.ArrayList<>(toRank.subList(i, j));
+            if (tieBlock.size() > 1) {
+                java.util.Collections.shuffle(tieBlock, random);
             }
-            pos += (j - i);
+            randomized.addAll(tieBlock);
             i = j;
+        }
+        int pos = 1;
+        for (Row r : randomized) {
+            r.finalPos = pos++;
         }
         // Set all 0 FinalPos to null for consistency
         for (Row r : rows) {
@@ -1471,17 +2063,19 @@ public class MergedFragment extends Fragment {
     private String generateCsvData() {
         StringBuilder sb = new StringBuilder();
         // Header
-        sb.append("Nr,Name,V,→,←,I,%,P,FinalPos\n");
+        sb.append("Nr,Name,#,V,→,←,I,%,P,Grp,FinalPos\n");
         // Data rows
         for (Row r : rows) {
             sb.append(r.nr).append(",");
             sb.append(r.name != null ? r.name.replace(",", ";") : "").append(",");
+            sb.append(r.matches).append(",");
             sb.append(r.victories).append(",");
             sb.append(r.given).append(",");
             sb.append(r.received).append(",");
             sb.append(r.index).append(",");
             sb.append(r.percent).append(",");
             sb.append(r.p).append(",");
+            sb.append(r.grp != null ? r.grp : "A").append(",");
             sb.append(r.finalPos != null ? r.finalPos : "").append("\n");
         }
         return sb.toString();
@@ -1725,8 +2319,20 @@ public class MergedFragment extends Fragment {
                 return;
             }
             
-            // Count how many new rows we add
-            int addedCount = 0;
+            java.util.List<Row> incomingRows = new java.util.ArrayList<>();
+            String headerLine = lines[0].trim();
+            boolean hasMatches = headerLine.contains(",#,") || headerLine.contains(",Matches,");
+            int base = hasMatches ? 3 : 2;
+            
+            // Detect Grp column index by finding "Grp" in header
+            int idxGrpInQr = -1;
+            String[] headerCols = headerLine.split(",", -1);
+            for (int h = 0; h < headerCols.length; h++) {
+                if (headerCols[h].trim().equals("Grp")) {
+                    idxGrpInQr = h;
+                    break;
+                }
+            }
             
             // Skip header, parse data rows and add to existing
             for (int i = 1; i < lines.length; i++) {
@@ -1734,31 +2340,25 @@ public class MergedFragment extends Fragment {
                 if (line.isEmpty()) continue;
                 
                 String[] cols = line.split(",", -1);
-                if (cols.length < 8) continue;
+                if (cols.length < (base + 6)) continue;
                 
-                int nr = rows.size() + 1; // Assign new Nr based on current table size
+                int nr = incomingRows.size() + 1;
                 String name = cols[1].replace(";", ",");
-                int victories = parseInt(cols[2], 0);
-                int given = parseInt(cols[3], 0);
-                int received = parseInt(cols[4], 0);
-                int index = parseInt(cols[5], 0);
-                int percent = parseInt(cols[6], 0);
-                int p = parseInt(cols[7], 0);
-                Integer finalPos = cols.length > 8 && !cols[8].isEmpty() ? parseInt(cols[8], 0) : null;
-                
-                rows.add(new Row(nr, name, victories, given, received, index, percent, p, finalPos));
-                addedCount++;
+                int matches = hasMatches ? parseInt(cols[2], 0) : 0;
+                int victories = parseInt(cols[base], 0);
+                int given = parseInt(cols[base + 1], 0);
+                int received = parseInt(cols[base + 2], 0);
+                int index = parseInt(cols[base + 3], 0);
+                int percent = parseInt(cols[base + 4], 0);
+                int p = parseInt(cols[base + 5], 0);
+                String grp = (idxGrpInQr >= 0 && idxGrpInQr < cols.length && !cols[idxGrpInQr].isEmpty()) ? cols[idxGrpInQr].trim() : "A";
+                if (matches <= 0) matches = inferMatches(victories, percent);
+                Integer finalPos = cols.length > (base + 6) && !cols[base + 6].isEmpty() ? parseInt(cols[base + 6], 0) : null;
+
+                incomingRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
             }
-            
-            // Recalculate FinalPos for combined data
-            calculateFinalPositions();
-            
-            // Re-render table
-            renderRows();
-            backupMergedMatrix();
-            
-            android.widget.Toast.makeText(getContext(), "Added " + addedCount + " participants (total: " + rows.size() + ")", android.widget.Toast.LENGTH_SHORT).show();
-            // android.util.Log.i("MergedFragment", "QR ADD: Successfully added " + addedCount + " rows, total now " + rows.size());
+
+            applyImportedRows(incomingRows, false, "QR");
             
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Failed to parse QR data", e);

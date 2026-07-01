@@ -295,11 +295,8 @@ public class RoundFragment extends Fragment {
                             }
                         }
                     }
-                    int[] newToOld = new int[nrPart];
-                    for (int i = 0; i < nrPart; i++) {
-                        newToOld[i] = (i < sortedRows.size()) ? sortedRows.get(i).idx : i;
-                    }
-                    scoresViewModel.reorderAllRounds(newToOld, sortedNames);
+                    scoresViewModel.setParticipantNamesDirect(sortedNames);
+                    scoresViewModel.setBoutResults(sortedBouts);
                 }
 
                 private boolean sameNameOrder(String[] a, String[] b, int nrPart) {
@@ -364,11 +361,8 @@ public class RoundFragment extends Fragment {
                         }
                     }
 
-                    int[] newToOld = new int[nrPart];
-                    for (int i = 0; i < nrPart; i++) {
-                        newToOld[i] = order.get(i);
-                    }
-                    scoresViewModel.reorderAllRounds(newToOld, sortedNames);
+                    scoresViewModel.setParticipantNamesDirect(sortedNames);
+                    scoresViewModel.setBoutResults(sortedBouts);
                 }
 
                 private boolean toggleNameSortAndReload() {
@@ -527,7 +521,6 @@ public class RoundFragment extends Fragment {
                 );
         super.onViewCreated(view, savedInstanceState);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
-        scoresViewModel.switchToRound(roundCode);
         // Only restore automatically if crash detected
         // On normal start, try to restore from backup if it exists (to preserve names/bouts)
             if (com.fencing.scores.MainActivity.crashDetected) {
@@ -543,7 +536,7 @@ public class RoundFragment extends Fragment {
         }
         // Observe changes and update matrix (only when this fragment is visible/resumed)
         scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> {
-            if (!suspendObservers && isResumed()) {
+            if (!suspendObservers && isResumed() && scoresViewModel.getActiveRoundCode() == roundCode) {
                 createMatrix(view);
                 updateHelpTextInLastPCell((TableLayout) view.findViewById(R.id.tableLayout),
                     scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
@@ -551,7 +544,7 @@ public class RoundFragment extends Fragment {
             }
         });
         scoresViewModel.getBoutResults().observe(getViewLifecycleOwner(), results -> {
-            if (!suspendObservers && isResumed()) {
+            if (!suspendObservers && isResumed() && scoresViewModel.getActiveRoundCode() == roundCode) {
                 createMatrix(view);
                 updateHelpTextInLastPCell((TableLayout) view.findViewById(R.id.tableLayout),
                     scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
@@ -559,7 +552,7 @@ public class RoundFragment extends Fragment {
             }
         });
         scoresViewModel.getNrPart().observe(getViewLifecycleOwner(), n -> {
-            if (!suspendObservers && isResumed()) {
+            if (!suspendObservers && isResumed() && scoresViewModel.getActiveRoundCode() == roundCode) {
                 createMatrix(view);
                 updateHelpTextInLastPCell((TableLayout) view.findViewById(R.id.tableLayout),
                     scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
@@ -567,7 +560,7 @@ public class RoundFragment extends Fragment {
             }
         });
         scoresViewModel.getColorCycleIndex().observe(getViewLifecycleOwner(), idx -> {
-            if (!suspendObservers && isResumed()) {
+            if (!suspendObservers && isResumed() && scoresViewModel.getActiveRoundCode() == roundCode) {
                 createMatrix(view);
                 updateHelpTextInLastPCell((TableLayout) view.findViewById(R.id.tableLayout),
                     scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
@@ -595,7 +588,7 @@ public class RoundFragment extends Fragment {
     @Override
     public void onPause() {
         saveBackupToDocuments();
-        if (scoresViewModel != null) {
+        if (scoresViewModel != null && scoresViewModel.getActiveRoundCode() == roundCode) {
             scoresViewModel.persistActiveRoundData();
         }
         super.onPause();
@@ -777,10 +770,17 @@ public class RoundFragment extends Fragment {
             btn.setLayoutParams(lp);
             btn.setOnClickListener(v -> {
                 int oldRounds = scoresViewModel.getNrRounds().getValue() != null ? scoresViewModel.getNrRounds().getValue() : 1;
+                // Ensure the currently visible page owns and persists its snapshot before changing round count.
+                scoresViewModel.switchToRound(roundCode);
+                scoresViewModel.persistActiveRoundData();
                 cleanupRoundBackupsAfterRoundCountChange(oldRounds, rounds);
                 scoresViewModel.setNrRounds(rounds);
-                if (roundCode > rounds && getActivity() instanceof com.fencing.scores.MainActivity) {
-                    ((com.fencing.scores.MainActivity) getActivity()).navigateToRoundPage(rounds);
+                int targetRound = Math.min(roundCode, rounds);
+                // Immediately refresh the active round snapshot so names/results do not appear stale
+                // until a swipe triggers fragment lifecycle callbacks.
+                scoresViewModel.switchToRound(targetRound);
+                if (getActivity() instanceof com.fencing.scores.MainActivity) {
+                    ((com.fencing.scores.MainActivity) getActivity()).navigateToRoundPage(targetRound);
                 }
                 if (dialogRef[0] != null) dialogRef[0].dismiss();
             });
@@ -1810,9 +1810,10 @@ public class RoundFragment extends Fragment {
 
     // Generate CSV string for export
     private String generateCSVCompat() {
+        scoresViewModel.persistActiveRoundData();
         int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
-        String[] participantNames = scoresViewModel.getParticipantNames().getValue();
-        int[][] boutResults = scoresViewModel.getBoutResults().getValue();
+        String[] participantNames = scoresViewModel.getRoundParticipantNamesSnapshot(roundCode);
+        int[][] boutResults = scoresViewModel.getRoundBoutResultsSnapshot(roundCode);
         if (participantNames == null || boutResults == null) return "";
         StringBuilder sb = new StringBuilder();
         // Header row

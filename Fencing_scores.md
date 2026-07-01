@@ -4,7 +4,7 @@
 Android app for managing complete fencing tournaments: pool rounds, merged rankings, knockout brackets, and final results.
 
 **License:** GNU General Public License V3.0  
-**Version:** 2.2  
+**Version:** 2.22  
 **Target:** Android 11+ (API 30+, target API 34)  
 **App Name:** "Fence!"  
 **APK Filename:** `Fence.apk` (project root — ready to install)  
@@ -137,8 +137,21 @@ Combine rankings from multiple pool rounds into unified seeding for KO phase.
 - FinalPos is the authoritative ranking used by KO, not recalculated from P
 - P values preserved during CSV import (not overwritten by FinalPos)
 - Automatic re-ranking when data changes
+- Grouping merge routine:
+  - exact same participant sets are merged into one group
+  - fully disjoint participant sets remain separate
+  - overlap between non-identical sets triggers full merge of all groups
+- Distinct-group force merge warning toast:
+  - `Same participant in distinct groups: MERGED`
 - Click last name to add participant, second-to-last to remove
 - Empty name removes participant from list
+
+### Merged Sorting
+- Long-press Name cells: toggles A-Z / Z-A
+- Long-press P cells: toggles increasing / decreasing
+- Click or long-press Grp header: toggles A-Z / Z-A
+- Long-press Grp value cells: toggles A-Z / Z-A
+- Long-press FinalPos cells: toggles increasing / decreasing
 
 ### Auto-backup
 Saves to Merged_backup.csv after each change.

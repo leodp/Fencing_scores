@@ -4,7 +4,7 @@ A comprehensive Android application for managing fencing tournament scores, from
 
 ## Features
 
-- **4-Page Tournament Flow**: Round → Merged → KO → Final
+- **Dynamic Tournament Flow**: Rounds1..RoundsN (1..5) → Merged → KO → Final
 - **Matrix-based pool scoring**: Track bout results between participants
 - **Merged rankings**: Combine results from multiple pools
 - **Knockout bracket**: Standard or repechage elimination brackets
@@ -18,6 +18,7 @@ A comprehensive Android application for managing fencing tournament scores, from
 ### Round (Pool Phase)
 - Matrix scoring grid for pool bouts
 - Automatic calculation of V (victories), → (given), ← (received), I (index), % (win rate), P (position)
+- Each Round page is independent and can use the same participants, different participants, or partial overlaps in different order
 - Bout order suggestions
 - Help dialog with LOAD, RESTORE, SAVE, QR OUT, QR IN, QUIT buttons
 - Color-coded result columns (cycling themes)
@@ -28,6 +29,14 @@ A comprehensive Android application for managing fencing tournament scores, from
 - Split table view (left/right rankings)
 - Buttons: RELOAD round, REPLACE, ADD, RESTORE crash, QR OUT, QR ADD, SAVE
 - Editable fields with automatic re-ranking
+- Grouping merge routine:
+  - exact same participant sets are merged into one group
+  - fully disjoint participant sets stay separated
+  - if any participant overlaps between non-identical sets, all groups are merged together
+- Import ADD with name-overlap handling:
+  - Append results to already imported participants (merge by name)
+  - Add as distinct mixed group (sets `P=0` to disable ambiguous KO-Mixed grouping)
+- Includes `#` column (total matches) for robust aggregation across mixed participant overlaps
 
 ### KO (Knockout Phase)
 - Visual bracket display with boxes for each match
@@ -148,6 +157,8 @@ The generated APKs will be located at:
 
 - Long-press `Name` cells toggles name order `A-Z` / `Z-A`
 - Long-press `P` cells toggles P order increasing / decreasing
+- Click or long-press `Grp` header toggles Grp order `A-Z` / `Z-A`
+- Long-press `Grp` value cells toggles Grp order `A-Z` / `Z-A`
 - Long-press `FinalPos` cells toggles FinalPos order increasing / decreasing
 
 ## Ranking System
@@ -174,4 +185,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V2.0** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V2.22** — See [CHANGELOG.md](CHANGELOG.md) for full history.

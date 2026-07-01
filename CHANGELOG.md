@@ -1,5 +1,40 @@
 # Changelog
 
+## [V2.22 - 2026-06-29]
+
+### Update - 2026-07-01 (Grouping and Round Rendering)
+- Merged grouping routine now follows strict set rules for `RELOAD round`:
+  - rounds with identical participant sets are merged into one group
+  - fully disjoint participant sets remain separated
+  - any overlap across non-identical sets collapses all groups into one merged group
+- Added explicit Merged toast when distinct groups are force-merged:
+  - `Same participant in distinct groups: MERGED`
+- Aligned add/import merge behavior with group-composition checks and validated mixed scenarios (same-set reuse and new disjoint groups)
+- Fixed round-page rendering race during round-count changes (increase/decrease):
+  - prevents temporary wrong participant matrix on the current page
+  - prevents removed round data from contaminating the last remaining round
+- Merged sorting extension:
+  - `Grp` header click and long-press toggle group sorting A-Z / Z-A
+  - long-press on `Grp` value cells also toggles group sorting
+
+### Round Pages - Independent Participant Sets
+- Enabled the same participant-name actions on every Round page (`Rounds1..RoundsN`): click to edit name, long-press to toggle name sorting
+- Round pages now keep participant names and ordering round-local; each round can hold the same participants, different participants, or mixed participant subsets in independent order
+- Round-local sorting no longer forces symmetric resorting of bout matrices in other rounds
+
+### Merged Page - ExtendParallel Name-Aware Merge
+- Added name-overlap-aware ADD flow for CSV/QR imports:
+  - `Append results`: merges rows by participant name and recomputes aggregated stats
+  - `Add as distinct mixed group`: appends as separate mixed group and sets `P=0` to disable KO-Mixed grouping ambiguity
+- Added `#` column (total matches) to Merged data model, table, backup/export CSV, and QR payload
+- Merged `RELOAD round` now aggregates using each round's own participant names, correctly handling:
+  - distinct groups (no overlap)
+  - repeated same group across rounds (full overlap)
+  - partially overlapping mixed groups
+
+### Release
+- Bumped app version to `2.22` (`versionCode 12`)
+
 ## [V2.1 - 2026-06-11]
 
 ### KO Page - 3:4 Popup Name Resolution
