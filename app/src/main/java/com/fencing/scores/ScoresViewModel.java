@@ -222,8 +222,7 @@ public class ScoresViewModel extends ViewModel {
                 }
             }
 
-            nrRounds.setValue(rounds);
-
+            // Update LiveData BEFORE changing nrRounds to avoid stale observer data during adapter rebuild
             int[][] activeMatrix = roundBoutResults.get(activeRoundCode);
             if (activeMatrix == null) {
                 activeMatrix = createEmptyMatrix(n);
@@ -245,6 +244,9 @@ public class ScoresViewModel extends ViewModel {
             boutResults.setValue(cloneMatrix(activeMatrix));
             participantNames.setValue(activeNames.clone());
             colorCycleIndex.setValue(roundColorCycleIndex.getOrDefault(activeRoundCode, 0));
+
+            // Now trigger adapter rebuild with correct LiveData values in place
+            nrRounds.setValue(rounds);
         }
     }
 
