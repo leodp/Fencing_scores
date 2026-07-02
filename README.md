@@ -2,6 +2,17 @@
 
 A comprehensive Android application for managing fencing tournament scores, from pool rounds through knockout stages to final rankings. Built under the GNU General Public License V3.0.
 
+## Installation
+
+### F-Droid (Recommended)
+Coming soon to F-Droid - the official Free and Open Source Android app repository.
+
+### GitHub Releases
+Download the latest APK directly from [GitHub Releases](https://github.com/leodp/Fencing_scores/releases)
+
+### Build from Source
+See [Building the Project](#building-the-project) section below.
+
 ## Features
 
 - **Dynamic Tournament Flow**: Rounds1..RoundsN (1..5) → Merged → KO → Final
@@ -185,4 +196,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V2.22** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V2.23** — See [CHANGELOG.md](CHANGELOG.md) for full history.

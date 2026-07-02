@@ -1,0 +1,45 @@
+Fencing Scores is an open-source application for managing fencing tournaments and competitions. Perfect for tournament directors, coaches, and referees.
+
+KEY FEATURES:
+
+🏹 Dynamic Tournament Flow
+• Manage 1-5 independent pool rounds
+• Combine results into merged rankings
+• Generate knockout brackets with 8 different formats
+• Track final tournament rankings
+
+📊 Matrix-Based Scoring
+• Easy-to-use bout result matrix
+• Automatic ranking calculations
+• Quick score entry with touch-friendly interface
+• Real-time participant positioning
+
+🎯 Flexible Bracket Modes
+• Standard single-elimination knockouts
+• Repechage (double elimination for losers)
+• Quick KO formats (1:2, 1-4, 1-8)
+• Mixed-round grouping options
+• Support for 8, 16, 32, and 64 participant brackets
+
+📱 Data Management
+• QR code generation for easy data sharing between devices
+• CSV import/export for backup and analysis
+• Automatic crash recovery
+• Per-round automatic backups
+
+🎨 User-Friendly Design
+• Intuitive swipe navigation between tournament stages
+• Color-coded interfaces
+• Customizable participant themes
+• Responsive layout for all device sizes
+
+💾 Local Data Storage
+• All data stored locally on your device
+• No cloud sync required
+• Privacy-focused design
+
+🔧 Open Source
+Licensed under GNU General Public License v3.0
+Source code available at: https://github.com/leodp/Fencing_scores
+
+Perfect for fencing clubs, tournament organizers, and competition venues.

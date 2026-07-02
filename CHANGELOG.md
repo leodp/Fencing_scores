@@ -1,5 +1,22 @@
 # Changelog
 
+## [V2.23 - 2026-07-02]
+
+### Critical Bug Fixes - Round/Group Count Changes
+- Fixed participant data corruption when changing round count (Groups Nr.)
+  - **Issue**: When reducing rounds (e.g., 3→2), participant data from one round appeared in wrong round slot (AB,FG instead of AB,CDE)
+  - **Root Cause**: Race condition during ViewPager2 adapter rebuild - fragment lifecycle callbacks fired before LiveData was updated
+  - **Solution 1**: Extended restore guard to all rounds (not just Round1) - skip auto-restore when ViewModel already populated
+  - **Solution 2**: Moved LiveData updates BEFORE nrRounds.setValue() - ensures fragments see correct data during adapter rebuild
+- Toast visibility improvements: Increased duration from 2s (LENGTH_SHORT) to 3.5s (LENGTH_LONG) across all 72+ toast messages
+- Rebuild process now correctly maintains participant order and data integrity across all round transitions
+
+### New Features for F-Droid Publication
+- Added comprehensive F-Droid publication plan (Fdroid.md)
+- Added fastlane metadata directory structure with localized app descriptions
+- Organized and documented 12 app screenshots showcasing key features
+- Updated app version to 2.23 for F-Droid release
+
 ## [V2.22 - 2026-06-29]
 
 ### Update - 2026-07-01 (Grouping and Round Rendering)

@@ -20,8 +20,8 @@ android {
         applicationId "com.fencing.scores"
         minSdk 30
         targetSdk 34
-        versionCode 12
-        versionName "2.22"
+        versionCode 13
+        versionName "2.23"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
