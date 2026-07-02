@@ -2361,7 +2361,7 @@ public class RoundFragment extends Fragment {
                 }
             }
             
-            applyImportedRoundData(participantNames, boutResults, nrPart);
+            applyImportedRoundData(participantNames, boutResults, nrPart, false);
             
             saveBackupToDocuments();
             android.widget.Toast.makeText(getContext(), "Round data imported from QR", android.widget.Toast.LENGTH_LONG).show();
