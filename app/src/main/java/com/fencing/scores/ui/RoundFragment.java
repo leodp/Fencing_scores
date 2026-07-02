@@ -522,12 +522,15 @@ public class RoundFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
         // Only restore automatically if crash detected
-        // On normal start, try to restore from backup if it exists (to preserve names/bouts)
+        // On normal start, restore from backup only when the ViewModel has no live data for
+        // this round yet (genuine cold/crash start). Skip restore when the adapter was just
+        // rebuilt due to a round-count change: the ViewModel already holds correct per-round
+        // data and calling restore would write backup contents into the wrong round slot
+        // (activeRoundCode != roundCode during synchronous onViewCreated).
             if (com.fencing.scores.MainActivity.crashDetected) {
             restoreFromDefaultBackupCompat();
         } else {
-            // On normal start, avoid restoring stale backup data for newly created Round2+ pages.
-            if (roundCode == 1) {
+            if (roundCode == 1 && !scoresViewModel.hasNonEmptyRoundData(roundCode)) {
                 java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), getRoundBackupFilename());
                 if (backupFile.exists() && backupFile.length() > 0) {
                     restoreFromDefaultBackupCompat();

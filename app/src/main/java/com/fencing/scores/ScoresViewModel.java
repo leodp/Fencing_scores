@@ -400,4 +400,20 @@ public class ScoresViewModel extends ViewModel {
             roundColorCycleIndex.put(activeRoundCode, idx);
         }
     }
+
+    /**
+     * Returns true if the ViewModel already holds non-empty participant names for the given
+     * round. Used by RoundFragment.onViewCreated to skip backup restore when the adapter is
+     * being rebuilt (round-count change) and the ViewModel already has correct in-memory data.
+     */
+    public boolean hasNonEmptyRoundData(int roundCode) {
+        synchronized (resizeLock) {
+            String[] names = roundParticipantNames.get(roundCode);
+            if (names == null) return false;
+            for (String n : names) {
+                if (n != null && !n.trim().isEmpty()) return true;
+            }
+            return false;
+        }
+    }
 }
