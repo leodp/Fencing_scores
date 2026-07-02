@@ -101,7 +101,7 @@ public class RoundFragment extends Fragment {
                         }
                         int activeCount = activeParticipants.size();
                         if (activeCount < 4 || activeCount > 12) {
-                            android.widget.Toast.makeText(getContext(), "Upcoming bouts only available for 4-12 participants", android.widget.Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(getContext(), "Upcoming bouts only available for 4-12 participants", android.widget.Toast.LENGTH_LONG).show();
                             return;
                         }
                         // Get bout order from assets/BoutOrder.txt
@@ -121,7 +121,7 @@ public class RoundFragment extends Fragment {
                             is.close();
                         } catch (Exception e) {}
                         if (boutOrder == null || boutOrder.trim().isEmpty()) {
-                            android.widget.Toast.makeText(getContext(), "No bout order found for this pool size", android.widget.Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(getContext(), "No bout order found for this pool size", android.widget.Toast.LENGTH_LONG).show();
                             return;
                         }
                         java.util.List<String> partSeq = new java.util.ArrayList<>();
@@ -152,7 +152,7 @@ public class RoundFragment extends Fragment {
                             }
                         }
                         if (partSeq.isEmpty()) {
-                            android.widget.Toast.makeText(getContext(), "No upcoming bouts available", android.widget.Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(getContext(), "No upcoming bouts available", android.widget.Toast.LENGTH_LONG).show();
                             return;
                         }
                         // Show dialog with up to 6 upcoming bouts
@@ -1893,7 +1893,7 @@ public class RoundFragment extends Fragment {
                     }
                     reader.close();
                     in.close();
-                    importCsvData(sb.toString());
+                    importCsvData(sb.toString(), false);
                     saveBackupToDocuments();
                 }
             }
@@ -1920,9 +1920,9 @@ public class RoundFragment extends Fragment {
                         sb.append(line).append("\n");
                     }
                     reader.close();
-                    importCsvData(sb.toString());
+                    importCsvData(sb.toString(), true);
                 } else {
-                    android.widget.Toast.makeText(ctx, "No backup file found in app private folder", android.widget.Toast.LENGTH_SHORT).show();
+                    android.widget.Toast.makeText(ctx, "No backup file found in app private folder", android.widget.Toast.LENGTH_LONG).show();
                 }
             }
         } catch (Exception e) {
@@ -1931,7 +1931,7 @@ public class RoundFragment extends Fragment {
     }
 
     // Parse CSV and update ViewModel
-    private void importCsvData(String csv) {
+    private void importCsvData(String csv, boolean replaceMode) {
         if (csv == null || csv.trim().isEmpty()) return;
         String[] lines = csv.split("\n");
         if (lines.length < 2) return; // header + at least one row
@@ -1962,7 +1962,7 @@ public class RoundFragment extends Fragment {
                 }
             }
         }
-        applyImportedRoundData(participantNames, boutResults, nrPart);
+        applyImportedRoundData(participantNames, boutResults, nrPart, replaceMode);
     }
 
     private java.util.List<String> collectNonEmptyUnique(String[] names, int limit) {
@@ -2005,28 +2005,39 @@ public class RoundFragment extends Fragment {
         return out;
     }
 
-    private void applyImportedRoundData(String[] loadedNames, int[][] loadedMatrix, int loadedNrPart) {
+    private void applyImportedRoundData(String[] loadedNames, int[][] loadedMatrix, int loadedNrPart, boolean replaceMode) {
         if (scoresViewModel == null) return;
 
-        int currentNrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
-        String[] currentNames = scoresViewModel.getParticipantNames().getValue();
-
-        java.util.List<String> existingOrdered = collectNonEmptyUnique(currentNames, currentNrPart);
         java.util.List<String> loadedOrdered = collectNonEmptyUnique(loadedNames, loadedNrPart);
 
-        java.util.List<String> mergedOrder = new java.util.ArrayList<>();
-        if (existingOrdered.isEmpty()) mergedOrder.addAll(loadedOrdered);
-        else mergedOrder.addAll(existingOrdered);
-
-        for (String name : loadedOrdered) {
-            if (!mergedOrder.contains(name)) mergedOrder.add(name);
-        }
-
+        java.util.List<String> mergedOrder;
         int targetNrPart;
-        if (existingOrdered.isEmpty()) {
+
+        if (replaceMode) {
+            // Backup restore: use loaded data directly without merging with current LiveData.
+            // Merging would contaminate this round with whichever round happened to be
+            // active in the ViewModel at fragment-creation time (synchronous onViewCreated).
+            mergedOrder = new java.util.ArrayList<>(loadedOrdered);
             targetNrPart = Math.max(ScoresViewModel.MIN_PARTICIPANTS, loadedNrPart);
         } else {
-            targetNrPart = Math.max(currentNrPart, mergedOrder.size());
+            // User-triggered CSV import: merge loaded names into the existing participant list.
+            int currentNrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
+            String[] currentNames = scoresViewModel.getParticipantNames().getValue();
+            java.util.List<String> existingOrdered = collectNonEmptyUnique(currentNames, currentNrPart);
+
+            mergedOrder = new java.util.ArrayList<>();
+            if (existingOrdered.isEmpty()) mergedOrder.addAll(loadedOrdered);
+            else mergedOrder.addAll(existingOrdered);
+
+            for (String name : loadedOrdered) {
+                if (!mergedOrder.contains(name)) mergedOrder.add(name);
+            }
+
+            if (existingOrdered.isEmpty()) {
+                targetNrPart = Math.max(ScoresViewModel.MIN_PARTICIPANTS, loadedNrPart);
+            } else {
+                targetNrPart = Math.max(currentNrPart, mergedOrder.size());
+            }
         }
         if (targetNrPart > ScoresViewModel.MAX_PARTICIPANTS) targetNrPart = ScoresViewModel.MAX_PARTICIPANTS;
 
@@ -2141,7 +2152,7 @@ public class RoundFragment extends Fragment {
         String compressed = compressRoundData(csvData);
         
         if (compressed == null) {
-            android.widget.Toast.makeText(getContext(), "Error compressing data", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Error compressing data", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2153,7 +2164,7 @@ public class RoundFragment extends Fragment {
         
         android.graphics.Bitmap qrBitmap = generateQrCode(compressed, qrSize);
         if (qrBitmap == null) {
-            android.widget.Toast.makeText(getContext(), "Error generating QR code", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Error generating QR code", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2298,13 +2309,13 @@ public class RoundFragment extends Fragment {
             if (result != null && result.getText() != null) {
                 handleRoundQrScanResult(result.getText());
             } else {
-                android.widget.Toast.makeText(getContext(), "No QR code found in image", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "No QR code found in image", android.widget.Toast.LENGTH_LONG).show();
             }
         } catch (com.google.zxing.NotFoundException e) {
-            android.widget.Toast.makeText(getContext(), "No QR code found in image", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "No QR code found in image", android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("RoundFragment", "Error decoding QR from image: " + e.getMessage());
-            android.widget.Toast.makeText(getContext(), "Error reading image", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Error reading image", android.widget.Toast.LENGTH_LONG).show();
         }
     }
     
@@ -2317,14 +2328,14 @@ public class RoundFragment extends Fragment {
     private void handleRoundQrScanResult(String scannedData) {
         String decompressed = decompressRoundData(scannedData);
         if (decompressed == null) {
-            android.widget.Toast.makeText(getContext(), "Invalid QR code data", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Invalid QR code data", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
         try {
             String[] lines = decompressed.split("\n");
             if (lines.length < 3 || !lines[0].equals("ROUND_DATA")) {
-                android.widget.Toast.makeText(getContext(), "Invalid Round data format", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "Invalid Round data format", android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -2353,10 +2364,10 @@ public class RoundFragment extends Fragment {
             applyImportedRoundData(participantNames, boutResults, nrPart);
             
             saveBackupToDocuments();
-            android.widget.Toast.makeText(getContext(), "Round data imported from QR", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Round data imported from QR", android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("RoundFragment", "Error parsing QR data: " + e.getMessage());
-            android.widget.Toast.makeText(getContext(), "Error parsing QR data", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Error parsing QR data", android.widget.Toast.LENGTH_LONG).show();
         }
     }
 }

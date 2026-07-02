@@ -215,7 +215,7 @@ public class FinalFragment extends Fragment {
         List<String> rankings = scoresViewModel.getFinalKORankings().getValue();
         
         if (rankings == null || rankings.isEmpty()) {
-            Toast.makeText(getContext(), "No rankings to save", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No rankings to save", Toast.LENGTH_LONG).show();
             android.util.Log.w("FinalFragment", "SAVE: No rankings to save");
             return;
         }
@@ -232,7 +232,7 @@ public class FinalFragment extends Fragment {
         List<String> rankings = scoresViewModel.getFinalKORankings().getValue();
         
         if (rankings == null || rankings.isEmpty()) {
-            Toast.makeText(getContext(), "No rankings to save", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No rankings to save", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -258,7 +258,7 @@ public class FinalFragment extends Fragment {
             
             writer.close();
             android.util.Log.i("FinalFragment", "SAVE: File saved successfully");
-            Toast.makeText(getContext(), "Final rankings saved successfully!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Final rankings saved successfully!", Toast.LENGTH_LONG).show();
             
         } catch (Exception e) {
             android.util.Log.e("FinalFragment", "SAVE ERROR: " + e.getMessage(), e);

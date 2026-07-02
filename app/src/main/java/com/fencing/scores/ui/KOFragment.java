@@ -646,7 +646,7 @@ public class KOFragment extends Fragment {
                 if (position >= 5 && !isMixRoundsAvailable()) {
                     // Revert to previous selection
                     spinner.setSelection(koModus);
-                    Toast.makeText(getContext(), "Mix-Rounds requires multiple participants with P=1 in Merged", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Mix-Rounds requires multiple participants with P=1 in Merged", Toast.LENGTH_LONG).show();
                     return;
                 }
                 if (position == koModus) return;
@@ -976,7 +976,7 @@ public class KOFragment extends Fragment {
             String headerLine = reader.readLine();
             if (headerLine == null) {
                 reader.close();
-                Toast.makeText(getContext(), "Merged backup is empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Merged backup is empty", Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -1008,7 +1008,7 @@ public class KOFragment extends Fragment {
             android.util.Log.i("KOFragment", "Loaded " + actualParticipants + " valid participants from Merged backup");
             
             if (actualParticipants == 0) {
-                Toast.makeText(getContext(), "No valid participants found in Merged", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "No valid participants found in Merged", Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -1063,7 +1063,7 @@ public class KOFragment extends Fragment {
             }
             renderKOTable(koBoxLayout);
             
-            Toast.makeText(getContext(), "Loaded " + actualParticipants + " participants for KO", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Loaded " + actualParticipants + " participants for KO", Toast.LENGTH_LONG).show();
             
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error loading Merged_backup.csv: " + e.getMessage());
@@ -1083,7 +1083,7 @@ public class KOFragment extends Fragment {
             // Load participant data from Merged_backup.csv
             java.util.List<String[]> mergedData = loadMergedParticipantData();
             if (mergedData == null || mergedData.isEmpty()) {
-                Toast.makeText(getContext(), "No participants found in Merged", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "No participants found in Merged", Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -1117,7 +1117,7 @@ public class KOFragment extends Fragment {
             koNrPart = allNames.size();
             
             renderKOTable(koBoxLayout);
-            Toast.makeText(getContext(), "Loaded " + koGroups.size() + " groups for " + KO_MODUS_LABELS[koModus], Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Loaded " + koGroups.size() + " groups for " + KO_MODUS_LABELS[koModus], Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error in reloadFromMergedWithModus: " + e.getMessage(), e);
             Toast.makeText(getContext(), "KO Error: " + e.getClass().getSimpleName() + ": " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1237,7 +1237,7 @@ public class KOFragment extends Fragment {
             return;
         }
         if (idxP < 0) {
-            Toast.makeText(getContext(), "P column not found in Merged", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "P column not found in Merged", Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -1760,7 +1760,7 @@ public class KOFragment extends Fragment {
         try {
             java.io.OutputStream os = requireContext().getContentResolver().openOutputStream(uri);
             if (os == null) {
-                Toast.makeText(getContext(), "Failed to open file for writing", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Failed to open file for writing", Toast.LENGTH_LONG).show();
                 return;
             }
             String[] participantNames = getKOParticipantNames();
@@ -1845,10 +1845,10 @@ public class KOFragment extends Fragment {
             writer.close();
             os.close();
             android.util.Log.i("KOFragment", "SAVE CSV: File saved to URI: " + uri.toString());
-            Toast.makeText(getContext(), "KO results saved successfully", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "KO results saved successfully", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "SAVE CSV ERROR: " + e.getMessage(), e);
-            Toast.makeText(getContext(), "Failed to save KO results: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Failed to save KO results: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
     
@@ -1903,7 +1903,7 @@ public class KOFragment extends Fragment {
         java.util.List<String> rankings = calculateKORankings();
         
         if (rankings.isEmpty()) {
-            Toast.makeText(getContext(), "No results to show. Complete some matches first.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No results to show. Complete some matches first.", Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -5436,7 +5436,7 @@ public class KOFragment extends Fragment {
             File backupFile = new File(filesDir, "KO_backup.csv");
             
             if (!backupFile.exists()) {
-                Toast.makeText(getContext(), "KO_backup.csv not found", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "KO_backup.csv not found", Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -5444,7 +5444,7 @@ public class KOFragment extends Fragment {
             String firstLine = reader.readLine();
             if (firstLine == null) {
                 reader.close();
-                Toast.makeText(getContext(), "KO_backup.csv is empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "KO_backup.csv is empty", Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -5568,7 +5568,7 @@ public class KOFragment extends Fragment {
             }
             propagateKOWinners();
             renderKOTable(koBoxLayout);
-            Toast.makeText(getContext(), "Restored from KO_backup.csv", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Restored from KO_backup.csv", Toast.LENGTH_LONG).show();
             
         } catch (Exception e) {
             Toast.makeText(getContext(), "Failed to restore: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -5661,7 +5661,7 @@ public class KOFragment extends Fragment {
             // Process matches from CSV (same format as backup)
             processRestoredMatches(lines);
             
-            Toast.makeText(getContext(), "KO state loaded from file", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "KO state loaded from file", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "REPLACE ERROR: " + e.getMessage());
             Toast.makeText(getContext(), "Error loading KO file: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -5787,7 +5787,7 @@ public class KOFragment extends Fragment {
         String compressed = compressKOData(csvData);
         
         if (compressed == null) {
-            Toast.makeText(getContext(), "Error compressing KO data", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Error compressing KO data", Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -5799,7 +5799,7 @@ public class KOFragment extends Fragment {
         
         android.graphics.Bitmap qrBitmap = generateQrCode(compressed, qrSize);
         if (qrBitmap == null) {
-            Toast.makeText(getContext(), "Error generating QR code", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Error generating QR code", Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -5899,13 +5899,13 @@ public class KOFragment extends Fragment {
             if (result != null && result.getText() != null) {
                 handleKOQrScanResult(result.getText());
             } else {
-                Toast.makeText(getContext(), "No QR code found in image", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "No QR code found in image", Toast.LENGTH_LONG).show();
             }
         } catch (com.google.zxing.NotFoundException e) {
-            Toast.makeText(getContext(), "No QR code found in image", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "No QR code found in image", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error decoding QR from image: " + e.getMessage());
-            Toast.makeText(getContext(), "Error reading image", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Error reading image", Toast.LENGTH_LONG).show();
         }
     }
     
@@ -5918,7 +5918,7 @@ public class KOFragment extends Fragment {
     private void handleKOQrScanResult(String scannedData) {
         String decompressed = decompressKOData(scannedData);
         if (decompressed == null) {
-            Toast.makeText(getContext(), "Invalid QR code data", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Invalid QR code data", Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -5932,10 +5932,10 @@ public class KOFragment extends Fragment {
             // Process matches from QR data (same format as backup)
             processRestoredMatches(lineList);
             
-            Toast.makeText(getContext(), "KO data imported from QR", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "KO data imported from QR", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "Error parsing QR data: " + e.getMessage());
-            Toast.makeText(getContext(), "Error parsing QR data", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Error parsing QR data", Toast.LENGTH_LONG).show();
         }
     }
     

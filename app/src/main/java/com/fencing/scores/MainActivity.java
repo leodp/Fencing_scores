@@ -630,7 +630,7 @@ public class MainActivity extends AppCompatActivity {
         // Save Results.csv directly to Documents folder, no file picker
         String state = Environment.getExternalStorageState();
         if (!Environment.MEDIA_MOUNTED.equals(state)) {
-            Toast.makeText(this, "Cannot access storage", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Cannot access storage", Toast.LENGTH_LONG).show();
             return;
         }
         File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
@@ -647,9 +647,9 @@ public class MainActivity extends AppCompatActivity {
         try (FileWriter writer = new FileWriter(outFile)) {
             writer.write(generateCSV());
             writer.flush();
-            Toast.makeText(this, outFile.getName() + " saved to Documents", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, outFile.getName() + " saved to Documents", Toast.LENGTH_LONG).show();
         } catch (IOException e) {
-            Toast.makeText(this, "Failed to save " + outFile.getName(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Failed to save " + outFile.getName(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1052,7 +1052,7 @@ public class MainActivity extends AppCompatActivity {
                     showSecondScoreSelectionPopup(participant1, participant2, finalScore);
                     ((AlertDialog) v.getTag()).dismiss();
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Error processing score: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Error processing score: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
             gridLayout.addView(scoreButton);
@@ -1160,7 +1160,7 @@ public class MainActivity extends AppCompatActivity {
                     updatePartSeq(); // Update PartSeq when bout scores are entered
                     updateMatrix();
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Error processing bout result: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Error processing bout result: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
             gridLayout.addView(scoreButton);
@@ -1197,7 +1197,7 @@ public class MainActivity extends AppCompatActivity {
                 updatePartSeq(); // Update PartSeq when bout is reset
                 updateMatrix();
             } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "Error resetting scores: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Error resetting scores: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
         gridLayout.addView(resetButton);
@@ -1233,7 +1233,7 @@ public class MainActivity extends AppCompatActivity {
                     backupData();
                 }
             } catch (Exception e) {
-                Toast.makeText(this, "Error updating matrix: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Error updating matrix: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
@@ -1493,13 +1493,13 @@ public class MainActivity extends AppCompatActivity {
             Uri uri = data.getData();
             if (uri != null) {
                 writeExcelFile(uri);
-                Toast.makeText(this, "Results.csv exported successfully", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Results.csv exported successfully", Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == 1002 && resultCode == RESULT_OK) {
             Uri uri = data.getData();
             if (uri != null) {
                 writeExcelFile(uri);
-                Toast.makeText(this, "Results.csv saved successfully", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Results.csv saved successfully", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -1540,7 +1540,7 @@ public class MainActivity extends AppCompatActivity {
                 outputStream.write(content.toString().getBytes());
                 outputStream.close();
                 
-                Toast.makeText(this, "Results exported to CSV format successfully", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Results exported to CSV format successfully", Toast.LENGTH_LONG).show();
             }
         } catch (IOException e) {
             Toast.makeText(this, "CSV export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1784,7 +1784,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == STORAGE_PERMISSION_REQUEST) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Storage permission granted", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Storage permission granted", Toast.LENGTH_LONG).show();
             } else {
                 // Permission denied, show settings dialog
                 showPermissionSettingsDialog();
@@ -1969,7 +1969,7 @@ public class MainActivity extends AppCompatActivity {
             
             // Rebuild the matrix
             // createMatrix();
-            Toast.makeText(this, "Data restored successfully (" + successfulRows + " participants)", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Data restored successfully (" + successfulRows + " participants)", Toast.LENGTH_LONG).show();
             
         } catch (Exception e) {
             Toast.makeText(this, "Failed to restore data: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -2042,7 +2042,7 @@ public class MainActivity extends AppCompatActivity {
             reader.close();
             inputStream.close();
         } catch (Exception e) {
-            Toast.makeText(this, "Error loading bout orders: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Error loading bout orders: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
     
@@ -2116,7 +2116,7 @@ public class MainActivity extends AppCompatActivity {
         updatePartSeq();
         
         if (partSeq.isEmpty()) {
-            Toast.makeText(this, "No upcoming bouts available", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "No upcoming bouts available", Toast.LENGTH_LONG).show();
             return;
         }
         

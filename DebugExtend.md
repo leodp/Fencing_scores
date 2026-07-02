@@ -101,8 +101,69 @@ Errata: the icon of the app is now saved in a directory named "îcon_img". The a
 - In KO Page the KO pulldown menu has still a geometry which is not as the other buttons, probasbly because it's a pulldown menu. Make its HEIGHT as the other buttons. Make it rounded as the other buttons. Make visible, in white a downward pointing arrow or triangle, after the text, to suggest that this is a pulldown menu and not a passive text
 
 IMPORTANT: check and fix
-Final Ranking is still not working in this case: No Merged data is present->I go to KO Page-> I load any KO CSV file with REPLACE, as for example those saved in the no/ directory (check them)-> entering ANY result in the KO tree matches does NOT update the rankings. Check how is REPLACE data entering the results flow
+Final Ranking is still not working in this case: No Merged data is present->I go to KO Page-> I load any KO CSV file with REPLACE, as for example those saved in the no/ directory (check them)-> entering ANY result in the KO tree matches does NOT update the rankings. Check how is REPLACE data entering the results flo
 
 
 ## Tasks
 - Implement the above points, all the changes since last execution, test them, update the release version to Version 2, updating and preparing the files and changelog for Github upload, compile the release apk and move it to the root directoy as usual. Then push to GitHub
+
+
+## ExtendParallel
+
+I would like to implement a more complex merging of bouts results procedure.
+The MergedRanking windowis at the moment able to combine: 
+- Rounds with the same participants, summing up the results
+- Rounds with non-matching participants, importing ranking data and preserving the initial Pos, for being able to make the so-named KO with mixed rounds.
+
+There are some unresolved situations. Let'S describe the possible situations.
+AB, CDE, BD, ACE, AC and so on are groups with distinct participants. The capital letter hints at the first letter of the participants' names. I use groups of 2 or 3 for simplicity. Whatto extract: there may be participants mixing in successive rounds, not all groups have the same Nr of participants.
+In the following lines, there are sections separated by multiple "-", preceded by an ordering number. Each of this section represents a competition Rounds. Each line in the section represents data acquired by a different device. Entries in each line, separated by "," indicate distinct rounds in a tournament. At the moment we define a Round Nr (defailt:1, max:5) in the app. The participants are assumed to be the same, and are reordered consistently in each Rouunds page.
+This will change now: reordering of Participants is applied only to the active Rounds window and does not propagate to the other windows. Participants names is not propagated automatically to all Rounds windows.
+Now the matches sections:
+1-----------------------------------------------------
+AB
+(simple match, nothing new)
+2-----------------------------------------------------
+AB,CDE
+(two distinct groups in one device, Pos and results are imported as they are in the Merged page, KO Mixed possible)
+3-----------------------------------------------------
+AB 
+CDE
+(two distinct groups in two devices. The results of the 2nd are imported as usual. Pos is kept for KO Mixed)
+4-----------------------------------------------------
+AB,AB
+(Double round, same participants. Correct impolementation now. No Ko Mixed possible)
+5-----------------------------------------------------
+AB
+AB
+(Double round, same participants, in 2 devices. Results of 2nd devices imported via CSV or QR. Correct implementation now. No Ko Mixed possible)
+6-----------------------------------------------------
+AB,CDE
+AB,CDE
+(Double round, with 2 groups having distinct participants, in 2 devices. Results of 2nd device imported via CSV or QR. Not clear how importing of the results for the 2 groups works now. KO Mixed should be possible)
+7-----------------------------------------------------
+AB,AB
+CDE,CDE
+(Double round, with 2 groups having distinct participants, in 2 devices. Results of 2nd device imported via CSV or QR. Not clear how importing of the results for the 2nd group's 2 distinct entries works now. KO Mixed should be possible)
+8-----------------------------------------------------
+AB,CDE
+AC,BDE
+(Mixing groups participants multiple rounds. Care has to be taken when merging data: as participants' Nr is probably different in each group, the combined "%" cannot be simply averaged from the various "%" values, but has to be calculated as 100*[total won]/[total disputed]. KO Mixed not possible, as there are no clear separated groups.)
+9d-----------------------------------------------------
+AB,ACE
+CDE,BD
+(Similar to previous situation, but now names in the second round are partially the same as those in the first round, in each device. This may be a flag when merging. Similar attention for the "%" calculation and no KO Mixed possible)
+-----------------------------------------------------
+
+So clearly:
+- We may mix groups with or without the same or a subset of the same participants
+- We may have to change the way we calculated the Merged Ranking and the entries in the Merged page. You may wish to add a column for Total matches performed, maybe before the column "V", with the key indicator "#". Exported SVN, QR code, imported data and matrices may have to be updated accordingly.
+- In situation like at section 7, when we import data from the second device, we may have to decide how to merge it to already present data. A popup may prompt the user for this decision, in case at least some of the participants names' are already present in the active Merged page. Possible choices are:
+	"Append results to an already imported group"
+	"Add results of a distinct (mixed?) group"
+Every time the second entry is chosen, the KO-Mixed is automatically disabled, as there's no clear way of defining Pos when groups participants mix
+- In all cases when groups mix (detected by identifying the Participants with their Names) no KO-Mixed is possible, and Pos does not make sense. We may wish to edit the Pos value after updating the calculations and setting it to a flag value of 0 for all participants in Merged Page
+
+This scheme works, of course, if more than 2 rounds are performed, or if results from more than 2 devices are merged in the Merged Page.
+
+Check the above instruction, plan the changes, write down the operating plan before implementing it

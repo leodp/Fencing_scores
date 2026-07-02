@@ -201,7 +201,7 @@ public class MergedFragment extends Fragment {
             int rounds = mainActivity.getRoundPagesCount();
             mainActivity.navigateToRoundPage(rounds);
         } else if (getActivity() instanceof com.fencing.scores.MergedActivity) {
-            android.widget.Toast.makeText(getContext(), "Navigation to Round page is only available in MainActivity.", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Navigation to Round page is only available in MainActivity.", android.widget.Toast.LENGTH_LONG).show();
         } else {
             android.util.Log.e("MergedFragment", "Activity is not MainActivity or MergedActivity, cannot navigate to previous page. Actual activity: " + (getActivity() != null ? getActivity().getClass().getName() : "null"));
         }
@@ -284,7 +284,7 @@ public class MergedFragment extends Fragment {
             try {
                 java.io.OutputStream os = requireContext().getContentResolver().openOutputStream(uri);
                 if (os == null) {
-                    android.widget.Toast.makeText(getContext(), "Failed to open file", android.widget.Toast.LENGTH_SHORT).show();
+                    android.widget.Toast.makeText(getContext(), "Failed to open file", android.widget.Toast.LENGTH_LONG).show();
                     return;
                 }
                 java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(os);
@@ -306,10 +306,10 @@ public class MergedFragment extends Fragment {
                 }
                 writer.close();
                 os.close();
-                android.widget.Toast.makeText(getContext(), "Ranking saved (" + rows.size() + " rows)", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "Ranking saved (" + rows.size() + " rows)", android.widget.Toast.LENGTH_LONG).show();
                 android.util.Log.i("MergedFragment", "Ranking CSV saved to: " + uri.toString());
             } catch (Exception e) {
-                android.widget.Toast.makeText(getContext(), "Save failed: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "Save failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
                 android.util.Log.e("MergedFragment", "Save CSV failed: " + e.getMessage());
             }
         }
@@ -922,7 +922,7 @@ public class MergedFragment extends Fragment {
             calculateFinalPositions();
             backupMergedMatrix();
             renderRows();
-            android.widget.Toast.makeText(getContext(), "Replaced " + importedRows.size() + " participants from " + sourceLabel, android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Replaced " + importedRows.size() + " participants from " + sourceLabel, android.widget.Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -966,7 +966,7 @@ public class MergedFragment extends Fragment {
             calculateFinalPositions();
             backupMergedMatrix();
             renderRows();
-            android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -1025,7 +1025,7 @@ public class MergedFragment extends Fragment {
         calculateFinalPositions();
         backupMergedMatrix();
         renderRows();
-        android.widget.Toast.makeText(getContext(), "Imported " + sourceLabel + ": merged by group composition", android.widget.Toast.LENGTH_SHORT).show();
+        android.widget.Toast.makeText(getContext(), "Imported " + sourceLabel + ": merged by group composition", android.widget.Toast.LENGTH_LONG).show();
     }
 
     private void selectCsvFile(int requestCode) {
@@ -1222,7 +1222,7 @@ public class MergedFragment extends Fragment {
             int rounds = vm.getNrRounds().getValue() != null ? vm.getNrRounds().getValue() : 1;
             int nrPart = vm.getNrPart().getValue() != null ? vm.getNrPart().getValue() : 0;
             if (nrPart <= 0) {
-                android.widget.Toast.makeText(getContext(), "No Round data available", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "No Round data available", android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
 
@@ -1333,9 +1333,9 @@ public class MergedFragment extends Fragment {
             useCsvOnly = false;
             backupMergedMatrix();
             renderRows();
-            android.widget.Toast.makeText(getContext(), "Reloaded merged data from " + rounds + " round(s)", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Reloaded merged data from " + rounds + " round(s)", android.widget.Toast.LENGTH_LONG).show();
             if (reloadedDistinctGroupsMerged) {
-                android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "Same participant in distinct groups: MERGED", android.widget.Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Error aggregating rounds: " + e.getMessage());
@@ -2149,7 +2149,7 @@ public class MergedFragment extends Fragment {
     // Show QR code fullscreen - tap to close
     private void showQrCodeFullscreen() {
         if (rows == null || rows.isEmpty()) {
-            android.widget.Toast.makeText(getContext(), "No data to export", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "No data to export", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2157,7 +2157,7 @@ public class MergedFragment extends Fragment {
         String compressed = compressData(csvData);
         
         if (compressed == null) {
-            android.widget.Toast.makeText(getContext(), "Failed to compress data", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Failed to compress data", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2193,7 +2193,7 @@ public class MergedFragment extends Fragment {
         Bitmap qrBitmap = generateQrCode(compressed, qrSize);
         
         if (qrBitmap == null) {
-            android.widget.Toast.makeText(getContext(), "Failed to generate QR code", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Failed to generate QR code", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2295,7 +2295,7 @@ public class MergedFragment extends Fragment {
             android.widget.Toast.makeText(getContext(), "No QR code found in image", android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Failed to decode QR from image", e);
-            android.widget.Toast.makeText(getContext(), "Failed to read image: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Failed to read image: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
     }
     
@@ -2307,7 +2307,7 @@ public class MergedFragment extends Fragment {
         String csvData = decompressData(scannedData);
         
         if (csvData == null) {
-            android.widget.Toast.makeText(getContext(), "Failed to decode QR data", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Failed to decode QR data", android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         
@@ -2315,7 +2315,7 @@ public class MergedFragment extends Fragment {
         try {
             String[] lines = csvData.split("\n");
             if (lines.length < 2) {
-                android.widget.Toast.makeText(getContext(), "Invalid data format", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), "Invalid data format", android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             
@@ -2362,7 +2362,7 @@ public class MergedFragment extends Fragment {
             
         } catch (Exception e) {
             android.util.Log.e("MergedFragment", "Failed to parse QR data", e);
-            android.widget.Toast.makeText(getContext(), "Failed to parse data: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(getContext(), "Failed to parse data: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
     }
     
