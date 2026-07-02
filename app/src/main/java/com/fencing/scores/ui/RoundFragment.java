@@ -530,7 +530,8 @@ public class RoundFragment extends Fragment {
             if (com.fencing.scores.MainActivity.crashDetected) {
             restoreFromDefaultBackupCompat();
         } else {
-            if (roundCode == 1 && !scoresViewModel.hasNonEmptyRoundData(roundCode)) {
+            // Apply guard to all rounds: skip restore if ViewModel already has data for this round.
+            if (!scoresViewModel.hasNonEmptyRoundData(roundCode)) {
                 java.io.File backupFile = new java.io.File(requireContext().getFilesDir(), getRoundBackupFilename());
                 if (backupFile.exists() && backupFile.length() > 0) {
                     restoreFromDefaultBackupCompat();
