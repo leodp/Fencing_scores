@@ -1,5 +1,12 @@
 # Changelog
 
+## [V2.24 - 2026-07-03]
+
+### F-Droid Build Cleanup
+- Added `distributionSha256Sum` to `gradle-wrapper.properties` for verified Gradle downloads
+- Prepared Gradle build dependencies to avoid F-Droid flagged `io.opencensus` tracker artifacts resolved through the Android build toolchain
+- Bumped app release to `2.24` (`versionCode 14`) for the next F-Droid pickup
+
 ## [V2.23 - 2026-07-02]
 
 ### Critical Bug Fixes - Round/Group Count Changes
