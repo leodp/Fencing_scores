@@ -67,11 +67,6 @@ androidComponents {
             output.outputFileName.set('Fence-debug.apk')
         }
     }
-    onVariants(selector().withBuildType('release')) { variant ->
-        variant.outputs.forEach { output ->
-            output.outputFileName.set('Fence.apk')
-        }
-    }
 }
 
 dependencies {

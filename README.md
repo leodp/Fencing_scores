@@ -138,7 +138,7 @@ Fencing_scores/
 
 The generated APKs will be located at:
 - Debug: `app/build/outputs/apk/debug/Fence-debug.apk`
-- Release (signed): `Fence.apk` (project root — ready to install)
+- Release: `app/build/outputs/apk/release/app-release.apk`
 
 ## Navigation
 

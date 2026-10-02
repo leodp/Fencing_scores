@@ -7,7 +7,7 @@ Android app for managing complete fencing tournaments: pool rounds, merged ranki
 **Version:** 2.22  
 **Target:** Android 11+ (API 30+, target API 34)  
 **App Name:** "Fence!"  
-**APK Filename:** `Fence.apk` (project root — ready to install)  
+**APK Filename:** `app/build/outputs/apk/release/app-release.apk`
 **Icon:** Fencer with epee on dark blue (#001582) background, adaptive icon support for round/shaped launchers
 
 ## App Structure
