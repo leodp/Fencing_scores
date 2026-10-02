@@ -17,7 +17,7 @@ AutoUpdateMode: Version
 Builds:
   - versionName: 2.24
     versionCode: 14
-    commit: 87c76644762da574cf37e73e74c16e938069d6b3
+    commit: e24de10761a9faf0dbb55397857483d6d7d0abe8
     subdir: app
     gradle:
       - yes
