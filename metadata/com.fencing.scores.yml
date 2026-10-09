@@ -9,16 +9,13 @@ IssueTracker: https://github.com/leodp/Fencing_scores/issues
 Changelog: https://github.com/leodp/Fencing_scores/blob/master/CHANGELOG.md
 RepoType: git
 Repo: https://github.com/leodp/Fencing_scores.git
-Binaries: https://github.com/leodp/Fencing_scores/raw/v2.24/app-release.apk
-AllowedAPKSigningKeys: a3bcecf7319175da3b75a899b238c210dfce01f7b3f4b9f1d97404dde9de5126
 UpdateCheckMode: Tags
 AutoUpdateMode: Version
 
 Builds:
-  - versionName: 2.24
-    versionCode: 14
-    commit: e24de10761a9faf0dbb55397857483d6d7d0abe8
+  - versionName: 2.25
+    versionCode: 15
+    commit: 0bc239b9a6b0d3485685cb4f97c6e087ca1ec947
     subdir: app
     gradle:
       - yes
-    output: build/outputs/apk/release/app-release-unsigned.apk
