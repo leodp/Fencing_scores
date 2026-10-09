@@ -15,7 +15,7 @@ AutoUpdateMode: Version
 Builds:
   - versionName: 2.25
     versionCode: 15
-    commit: 0bc239b9a6b0d3485685cb4f97c6e087ca1ec947
+    commit: 391a19da80739601d1765ade764e13b2708ed379
     subdir: app
     gradle:
       - yes
