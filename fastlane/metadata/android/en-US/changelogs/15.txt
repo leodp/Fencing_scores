@@ -1,0 +1,3 @@
+Storage and F-Droid follow-up.
+
+CSV export now uses Android's Storage Access Framework, and unused storage/media permissions were removed. Camera access remains available for QR scanning.

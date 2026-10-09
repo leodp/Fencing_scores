@@ -1,5 +1,12 @@
 # Changelog
 
+## [V2.25 - 2026-10-09]
+
+### Storage and F-Droid Follow-up
+- Replaced the remaining direct public Documents CSV export with Android's Storage Access Framework.
+- Removed unused storage and media permissions while retaining camera access for QR scanning.
+- Updated F-Droid metadata and release presentation files for the new source release.
+
 ## [V2.24 - 2026-07-03]
 
 ### F-Droid Build Cleanup

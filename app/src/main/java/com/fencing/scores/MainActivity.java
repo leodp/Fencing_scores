@@ -20,10 +20,7 @@ package com.fencing.scores;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AlertDialog;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import android.Manifest;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.content.res.Configuration;
@@ -160,7 +157,6 @@ public class MainActivity extends AppCompatActivity {
     };
     private int colorCycleIndex = 0; // Ensure default is gold/coral
     private static final int CREATE_FILE_REQUEST = 1;
-    private static final int STORAGE_PERMISSION_REQUEST = 100;
     
     private boolean isAppInitialized = false; // Track if app has been initialized
     private int nrPart = 10;
@@ -627,30 +623,15 @@ public class MainActivity extends AppCompatActivity {
 
     // Launches a file picker to let the user save Results.csv to a folder of their choice
     private void exportResultsToUserFolder() {
-        // Save Results.csv directly to Documents folder, no file picker
-        String state = Environment.getExternalStorageState();
-        if (!Environment.MEDIA_MOUNTED.equals(state)) {
-            Toast.makeText(this, "Cannot access storage", Toast.LENGTH_LONG).show();
-            return;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/csv");
+        intent.putExtra(Intent.EXTRA_TITLE, "Results.csv");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    Uri.parse("content://com.android.externalstorage.documents/tree/primary%3ADocuments"));
         }
-        File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
-        if (!documentsDir.exists()) {
-            documentsDir.mkdirs();
-        }
-        // Find a unique filename if Results.csv exists, using 3-digit numbering
-        File outFile = new File(documentsDir, "Results.csv");
-        int fileIndex = 1;
-        while (outFile.exists()) {
-            outFile = new File(documentsDir, String.format("Results_%03d.csv", fileIndex));
-            fileIndex++;
-        }
-        try (FileWriter writer = new FileWriter(outFile)) {
-            writer.write(generateCSV());
-            writer.flush();
-            Toast.makeText(this, outFile.getName() + " saved to Documents", Toast.LENGTH_LONG).show();
-        } catch (IOException e) {
-            Toast.makeText(this, "Failed to save " + outFile.getName(), Toast.LENGTH_LONG).show();
-        }
+        startActivityForResult(intent, CREATE_FILE_REQUEST);
     }
 
     // Launches a file picker to let the user save Results.csv to a folder of their choice (from Help menu)
@@ -1760,37 +1741,6 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, 2);
     }
     
-    private boolean checkPermissionsAndRequest() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // For Android 13+ (API 33+), use specific media permissions
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                return true; // No runtime permissions needed for Documents folder access via MediaStore
-            }
-            
-            // For older versions, check WRITE_EXTERNAL_STORAGE
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                        STORAGE_PERMISSION_REQUEST);
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == STORAGE_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Storage permission granted", Toast.LENGTH_LONG).show();
-            } else {
-                // Permission denied, show settings dialog
-                showPermissionSettingsDialog();
-            }
-        }
-    }
     
     private void showPermissionSettingsDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);

@@ -196,4 +196,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V2.23** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V2.25** — See [CHANGELOG.md](CHANGELOG.md) for full history.

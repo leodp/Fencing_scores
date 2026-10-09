@@ -14,8 +14,8 @@ Publishing the Fencing Scores app to F-Droid, the official Free and Open Source 
 
 ### 2. **App Signing & Versioning**
 - [ ] Use a proper release signing key (currently using debug key - needs change)
-- [ ] Increment versionCode for each release (current: 12)
-- [ ] Follow semantic versioning in versionName (current: 2.22)
+- [ ] Increment versionCode for each release (current: 15)
+- [ ] Follow semantic versioning in versionName (current: 2.25)
 - [ ] Document signing process in repository
 
 ### 3. **Source Code Metadata** (Required by F-Droid)
@@ -24,8 +24,8 @@ Publishing the Fencing Scores app to F-Droid, the official Free and Open Source 
   android {
     defaultConfig {
       applicationId "com.fencing.scores"
-      versionCode 12
-      versionName "2.22"
+      versionCode 15
+      versionName "2.25"
       minSdkVersion 30
       targetSdkVersion 34
     }
@@ -88,11 +88,11 @@ keytool -genkey -v -keystore ~/android_release.jks \
 # Sign with jarsigner (alternative method)
 jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
   -keystore ~/android_release.jks \
-  app/build/outputs/apk/release/Fence.apk fencing_scores_release
+  app/build/outputs/apk/release/app-release.apk fencing_scores_release
 ```
 
 #### Step 1.2 - Update Version Numbers
-- Update `app/build.gradle`: `versionCode 13`, `versionName "2.23"`
+- Update `app/build.gradle`: `versionCode 15`, `versionName "2.25"`
 - Reason: Signal new release cycle with proper versioning
 
 #### Step 1.3 - Update README.md
@@ -149,7 +149,7 @@ Report issues on [GitHub Issues](https://github.com/leodp/Fencing_scores/issues)
 #### Step 1.4 - Create GitHub Release
 ```bash
 # Tag the release
-git tag -a v2.23 -m "Release 2.23: Fixed round-change data corruption"
+git tag -a v2.25 -m "Release 2.25: Storage and F-Droid follow-up"
 
 # Push tag
 git push origin v2.23
@@ -161,18 +161,17 @@ git push origin v2.23
 
 #### Step 2.1 - Create F-Droid App Metadata Directory
 ```
-app/build/intermediates/fdroid/
-  └── com.fencing.scores/
-      ├── en-US/
-      │   ├── name.txt (max 50 chars)
-      │   ├── summary.txt (max 80 chars)
-      │   ├── description.txt
-      │   ├── phone_screenshots/
-      │   │   ├── 1.png (best: 480x854)
-      │   │   ├── 2.png
-      │   │   └── 3.png
-      │   └── feature_graphic.png (1024x500)
-      └── ...
+metadata/com.fencing.scores.yml
+fastlane/metadata/android/en-US/
+  ├── title.txt
+  ├── short_description.txt
+  ├── full_description.txt
+  └── images/phoneScreenshots/
+      ├── 1_round.png
+      ├── 2_bouts.png
+      ├── 3_merged.png
+      ├── 4_ko.png
+      └── 5_results.png
 ```
 
 #### Step 2.2 - Prepare App Metadata
@@ -235,7 +234,7 @@ F-Droid automatically tracks GitHub releases. Steps:
 
 #### Step 3.1 - Establish Release Cadence
 - Version numbering: `versionCode` always increments, `versionName` follows semantic versioning
-- Tag each release on GitHub: `v2.23`, `v2.24`, etc.
+- Tag each release on GitHub: `v2.23`, `v2.24`, `v2.25`, etc.
 - Add release notes to GitHub Releases describing changes
 - F-Droid will automatically build and publish new versions
 
@@ -259,9 +258,9 @@ Once published, update README.md with F-Droid download link
 
 ### ⏳ To Do
 - [ ] Create release signing keystore (production key)
-- [ ] Update app version to 2.23
+- [ ] Update app version to 2.25
 - [ ] Update/enhance README.md with full feature list
-- [ ] Create GitHub Release v2.23
+- [ ] Create GitHub Release v2.25
 - [ ] Set up fastlane metadata structure
 - [ ] Create app screenshots
 - [ ] Submit to F-Droid
@@ -273,10 +272,11 @@ Once published, update README.md with F-Droid download link
 | File | Action | Details |
 |------|--------|---------|
 | README.md | Update | Add features, F-Droid link, build instructions |
-| app/build.gradle | Update | Increment versionCode to 13, versionName to "2.23" |
+| app/build.gradle | Update | Increment versionCode to 15, versionName to "2.25" |
+| metadata/com.fencing.scores.yml | Create | F-Droid build recipe |
 | fastlane/metadata/android/en-US/* | Create | App metadata for F-Droid |
 | .keystore | Create | Release signing key (store securely, not in git) |
-| GitHub Releases | Create | Tag v2.23 with signed APK |
+| GitHub Releases | Create | Tag v2.25 with signed APK |
 
 ## Security Notes
 

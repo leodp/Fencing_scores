@@ -12,16 +12,41 @@ plugins {
     id 'com.android.application'
 }
 
+def releaseSigning = [
+    storeFile: System.getenv('FENCING_RELEASE_STORE_FILE'),
+    storePassword: System.getenv('FENCING_RELEASE_STORE_PASSWORD'),
+    keyAlias: System.getenv('FENCING_RELEASE_KEY_ALIAS'),
+    keyPassword: System.getenv('FENCING_RELEASE_KEY_PASSWORD')
+]
+def configuredReleaseSigningValues = releaseSigning.values().count { value ->
+    value != null && !value.trim().isEmpty()
+}
+if (configuredReleaseSigningValues != 0 && configuredReleaseSigningValues != releaseSigning.size()) {
+    throw new GradleException('Release signing requires all FENCING_RELEASE_* environment variables.')
+}
+def releaseSigningConfigured = configuredReleaseSigningValues == releaseSigning.size()
+
 android {
     namespace = 'com.fencing.scores'
     compileSdk 34
+
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            release {
+                storeFile file(releaseSigning.storeFile)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.keyAlias
+                keyPassword releaseSigning.keyPassword
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.fencing.scores"
         minSdk 30
         targetSdk 34
-        versionCode 14
-        versionName "2.24"
+        versionCode 15
+        versionName "2.25"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,7 +56,9 @@ android {
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig = signingConfigs.debug
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             // Speed optimizations for release
             ndk {
                 debugSymbolLevel = 'NONE'
