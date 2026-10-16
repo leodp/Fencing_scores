@@ -586,6 +586,9 @@ public class RoundFragment extends Fragment {
         View root = getView();
         if (root != null) {
             createMatrix(root);
+            updateHelpTextInLastPCell((TableLayout) root.findViewById(R.id.tableLayout),
+                scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS,
+                findLastEmptyP());
         }
     }
 
@@ -1216,7 +1219,17 @@ public class RoundFragment extends Fragment {
     // Show the help dialog window
     private void showHelpDialog() {
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
-        builder.setTitle("Help");
+        String versionName = "unknown";
+        try {
+            android.content.Context context = requireContext();
+            versionName = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
+        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+        }
+        String helpTitle = "Help page - Fencing scores V." + versionName;
+        android.text.SpannableString styledTitle = new android.text.SpannableString(helpTitle);
+        styledTitle.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+            0, styledTitle.length(), android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        builder.setTitle(styledTitle);
         android.widget.ScrollView scrollView = new android.widget.ScrollView(getContext());
         android.widget.LinearLayout layout = new android.widget.LinearLayout(getContext());
         layout.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -1323,7 +1336,24 @@ public class RoundFragment extends Fragment {
         } catch (Exception e) {
             helpContent = "Error loading help content.";
         }
-        helpText.setText(helpContent);
+        android.text.SpannableString styledHelp = new android.text.SpannableString(helpContent);
+        helpText.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);
+        int lineStart = 0;
+        while (lineStart < styledHelp.length()) {
+            int lineEnd = helpContent.indexOf('\n', lineStart);
+            if (lineEnd == -1) {
+                lineEnd = styledHelp.length();
+            }
+            String helpLine = helpContent.substring(lineStart, lineEnd).trim();
+            if (helpLine.startsWith("#") || helpLine.startsWith("**")
+                || helpLine.startsWith("OVERVIEW ACTIONS")
+                || helpLine.equals("INTERACTION:")) {
+                styledHelp.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    lineStart, lineEnd, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            lineStart = lineEnd + 1;
+        }
+        helpText.setText(styledHelp);
         helpText.setAutoLinkMask(android.text.util.Linkify.WEB_URLS | android.text.util.Linkify.EMAIL_ADDRESSES);
         helpText.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
         helpText.setLinkTextColor(Color.BLUE);
@@ -1819,6 +1849,7 @@ public class RoundFragment extends Fragment {
         String[] participantNames = scoresViewModel.getRoundParticipantNamesSnapshot(roundCode);
         int[][] boutResults = scoresViewModel.getRoundBoutResultsSnapshot(roundCode);
         if (participantNames == null || boutResults == null) return "";
+        int[] positions = calculateRoundPositions(nrPart, participantNames, boutResults);
         StringBuilder sb = new StringBuilder();
         // Header row
         sb.append("Nr,Name");
@@ -1875,11 +1906,68 @@ public class RoundFragment extends Fragment {
                 percent = String.valueOf((int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100));
             }
             sb.append(",").append(percent);
-            // P (Position) - leave empty (ranking logic can be added if needed)
-            sb.append(",");
+            // P (Position) is exported for documentation; imports recalculate it.
+            sb.append(",").append(positions[i] > 0 ? positions[i] : "");
             sb.append("\n");
         }
         return sb.toString();
+    }
+
+    private int[] calculateRoundPositions(int nrPart, String[] participantNames, int[][] boutResults) {
+        int[] positions = new int[nrPart];
+        if (participantNames == null || boutResults == null) return positions;
+        java.util.List<int[]> stats = new java.util.ArrayList<>();
+        for (int i = 0; i < nrPart; i++) {
+            if (i >= participantNames.length || i >= boutResults.length
+                || participantNames[i] == null || participantNames[i].isEmpty()) continue;
+            int victories = 0;
+            int given = 0;
+            int received = 0;
+            int boutsWon = 0;
+            int boutsLost = 0;
+            boolean hasAnyBout = false;
+            for (int j = 0; j < nrPart; j++) {
+                if (i == j || j >= participantNames.length || j >= boutResults.length
+                    || participantNames[j] == null || participantNames[j].isEmpty()
+                    || boutResults[i] == null || boutResults[j] == null
+                    || j >= boutResults[i].length || i >= boutResults[j].length) continue;
+                if (boutResults[i][j] < 0 || boutResults[j][i] < 0) continue;
+                hasAnyBout = true;
+                int score = boutResults[i][j];
+                int opponentScore = boutResults[j][i];
+                if (score > opponentScore) {
+                    victories++;
+                    boutsWon++;
+                } else if (score < opponentScore) {
+                    boutsLost++;
+                }
+                given += score;
+                received += opponentScore;
+            }
+            if (hasAnyBout) {
+                int percent = (boutsWon + boutsLost) > 0
+                    ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100)
+                    : 0;
+                stats.add(new int[]{i, percent, given - received, given, victories});
+            }
+        }
+        stats.sort((a, b) -> {
+            int comparison = Integer.compare(b[1], a[1]);
+            if (comparison != 0) return comparison;
+            comparison = Integer.compare(b[2], a[2]);
+            if (comparison != 0) return comparison;
+            return Integer.compare(b[3], a[3]);
+        });
+        int position = 1;
+        for (int i = 0; i < stats.size(); i++) {
+            if (i > 0 && (stats.get(i)[1] != stats.get(i - 1)[1]
+                || stats.get(i)[2] != stats.get(i - 1)[2]
+                || stats.get(i)[3] != stats.get(i - 1)[3])) {
+                position = i + 1;
+            }
+            positions[stats.get(i)[0]] = position;
+        }
+        return positions;
     }
 
     // Load CSV from selected URI (stub: implement actual import logic)
@@ -1939,6 +2027,10 @@ public class RoundFragment extends Fragment {
         if (csv == null || csv.trim().isEmpty()) return;
         String[] lines = csv.split("\n");
         if (lines.length < 2) return; // header + at least one row
+        if (isMergedDataHeader(lines[0])) {
+            showWrongPageImportMessage("Merged");
+            return;
+        }
         // Find header columns
         String[] header = lines[0].split(",");
         int nrPart = 0;
@@ -1967,6 +2059,23 @@ public class RoundFragment extends Fragment {
             }
         }
         applyImportedRoundData(participantNames, boutResults, nrPart, replaceMode);
+    }
+
+    private boolean isMergedDataHeader(String headerLine) {
+        if (headerLine == null) return false;
+        String[] columns = headerLine.trim().split(",", -1);
+        boolean hasFinalPosition = false;
+        for (String column : columns) {
+            String header = column.trim();
+            if (header.equals("FinalPos")) hasFinalPosition = true;
+        }
+        return hasFinalPosition;
+    }
+
+    private void showWrongPageImportMessage(String sourcePage) {
+        android.widget.Toast.makeText(getContext(),
+            "Import not done: this data comes from the " + sourcePage + " page.",
+            android.widget.Toast.LENGTH_LONG).show();
     }
 
     private java.util.List<String> collectNonEmptyUnique(String[] names, int limit) {
@@ -2128,6 +2237,7 @@ public class RoundFragment extends Fragment {
         int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
         String[] participantNames = scoresViewModel.getParticipantNames().getValue();
         int[][] boutResults = scoresViewModel.getBoutResults().getValue();
+        int[] positions = calculateRoundPositions(nrPart, participantNames, boutResults);
         
         StringBuilder csv = new StringBuilder();
         csv.append("ROUND_DATA\n"); // Header to identify data type
@@ -2146,6 +2256,11 @@ public class RoundFragment extends Fragment {
                 csv.append(val).append(j < nrPart - 1 ? "," : "\n");
             }
         }
+        csv.append("P");
+        for (int i = 0; i < nrPart; i++) {
+            csv.append(",").append(positions[i] > 0 ? positions[i] : "");
+        }
+        csv.append("\n");
         
         return csv.toString();
     }
@@ -2339,6 +2454,10 @@ public class RoundFragment extends Fragment {
         try {
             String[] lines = decompressed.split("\n");
             if (lines.length < 3 || !lines[0].equals("ROUND_DATA")) {
+                if (isMergedDataHeader(lines.length > 0 ? lines[0] : "")) {
+                    showWrongPageImportMessage("Merged");
+                    return;
+                }
                 android.widget.Toast.makeText(getContext(), "Invalid Round data format", android.widget.Toast.LENGTH_LONG).show();
                 return;
             }

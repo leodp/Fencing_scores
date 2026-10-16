@@ -7,6 +7,9 @@ A comprehensive Android application for managing fencing tournament scores, from
 ### F-Droid (Recommended)
 Coming soon to F-Droid - the official Free and Open Source Android app repository.
 
+### Development Branch
+Version 2.26 is being prepared on the [`development/2.26`](https://github.com/leodp/Fencing_scores/tree/development/2.26) branch. It contains unreleased changes and local test builds; the official release branch remains `main`.
+
 ### GitHub Releases
 Download the latest APK directly from [GitHub Releases](https://github.com/leodp/Fencing_scores/releases)
 
@@ -21,6 +24,7 @@ See [Building the Project](#building-the-project) section below.
 - **Knockout bracket**: Standard or repechage elimination brackets
 - **Final rankings**: Consolidated tournament results
 - **QR code data transfer**: Share data between devices
+- **Round documentation exports**: Export calculated P positions in CSV and QR data
 - **Auto-backup**: Crash recovery for all pages
 - **Touch-friendly interface**: Rounded buttons, easy score entry
 

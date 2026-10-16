@@ -1,9 +1,11 @@
-This app is used to log & calculate the results of a fencing pool
+This app is used to log & calculate the results of a small fencing tournament, with possibility to repeat the same pools in up to 5 rounds and merge results from distinct ones KO matches are offered with various combination modes
 
-Interaction:
+INTERACTION:
 ------------
-Pressing the Nr column shows the upcoming bouts
-Long pressing last  cells in the Nr col. adds    1 participant
+When launching the app you are presented the pools page. You can interact with it quite intuitively.
+
+Pressing the Nr column shows the upcoming bouts:
+Long pressing last cells in the Nr col. adds 1 participant
 Long pressing first cells in the Nr col. removes 1 participant
 
 Select a participant name to define/cancel it
@@ -17,12 +19,8 @@ Touch results cells to change their color
 -----------------------------------------------------------------
 
 Results are calculated every time a bout is entered
-They are automatically saved in a backup file at each interaction
-RESTORE last pool backup with the button above
-You can also use saved CSV files or QR codes to reload a previous
-status. QR codes are quick means to share data between phones.
-ATTENTION: if the program crashes, do NOT enter again data
-  This will overwrite the backup. Use the RESTORE buttons instead
+You can also use saved CSV files or QR codes to reload a previous status. QR codes are quick means to share data between phones.
+ATTENTION: if the program crashes, backup files (updated at each interaction) will help restore the results. Do NOT enter again data: Use the RESTORE buttons instead
 
 
 OVERVIEW ACTIONS -------------------------------------------------
@@ -33,54 +31,51 @@ OVERVIEW ACTIONS -------------------------------------------------
 **Rounds1..RoundsN → Merged → KO → Final → Rounds1 (N = 1..5)**
 
 ## Navigation (All Pages)
- Swipe left  : Next page
- Swipe right : Previous page
- Long press  : Next page (Final → Round wraps)
+Swipe left  : Next page
+Swipe right : Previous page
+Long press  : Next page (Final → Round wraps)
 
 
-## Round Page
- Nr cells : Click : Show upcoming planned bouts
- Nr cells (top half) : Long press : Remove last participant row
- Nr cells (bottom half) : Long press : Add participant row
- Name header ("Round Nr: X") : Click/long press : Set rounds nr. (1..5)
- Name cells : Click : Edit name
- Name cells : Long press : Sort by name
- Bout cells : Click : Enter scores
- V/→/←/I/% cells : Click : Cycle color theme
- P cells : Click : Show Help dialog
- P cells : Long press : Sort by ranking
- Result cells : Long press : Go to Merged
- Other Headers : Click : Show QR code
+## Round Pages
+Nr cells : Click : Show upcoming planned bouts
+Nr cells (top half) : Long press : Remove last participant row
+Nr cells (bottom half) : Long press : Add participant row
+Name header ("Round Nr: X") : Click/long press : Set rounds nr. (1..5). Rounds pages can be used to repeat the same pool or define others with different participants. Take care of using unique names
+Name cells : Click : Edit name
+Name cells : Long press : Sort by name
+Bout cells : Click : Enter scores
+V/→/←/I/% cells : Click : Cycle color theme
+P cells : Click : Show Help dialog
+P cells : Long press : Sort by ranking
+Result cells : Long press : Go to Merged
+Other Headers : Click : Show QR code
 
 
-**Help Dialog (2x3 grid):** buttons & show this help file
+**Help Dialog :** load/save pools-rounds & show help
 
 
 ## Merged Page
- Nr cells (top half) : Long press : Remove last participant
- Nr cells (bottom half) : Long press : Add participant
- Name/V/→/←/I/%/P cells : Click : Edit value
+Nr cells (top half) : Long press : Remove last participant
+Nr cells (bottom half) : Long press : Add participant
+Name/V/→/←/I/%/P cells : Click : Edit value
 Name cells : Long press : Toggle sort A-Z / Z-A
- FinalPos cells : Click : Edit position
-FinalPos cells : Long press : Toggle sort FinalPos increasing / decreasing
-P cells : Long press : Toggle sort P increasing / decreasing
- Any other cells : Long press : Go to KO
+FinalPos cells : Click : Edit position
+FinalPos cells : Long press : Toggle sort FinalPos
+P cells : Long press : Toggle sort P
+Any other cell : Long press : Go to KO
 
 
 ## KO Page
- Black KO button : Menu : Change KO modus
- Match button : Click : Enter match scores
+Black KO button : Menu : Change KO modus
+Match button : Click : Enter match scores
 
 **Match popup Dialog:** Score buttons (0-15), RESET, CANCEL
 
 
 ## Final Page
 Read-only rankings display.
- Long press : Go back to Round
+Long press : Go back to Round
 
-
-## Data Flow
-Rounds1..RoundsN (pool) → Merged (aggregated rankings) → KO → Final (results)
 
 ## Automatic Backup
 Each page backs up to `{Page}_backup.csv` on changes
@@ -89,13 +84,14 @@ Backup recovered with RESTORE buttons
 QUIT performs a clean exit: all backup files are deleted and next start is clean
 
 ## QR Codes
-GZIP + Base64 compression for all QR transfers
 To help sharing info between devices
-Useful to import ranking of other groups in Merged page (for organizing KO)
+Useful to import ranking of other pools in Merged page (for organizing KO rounds)
 
 ----------------------------------------------------------------
 
 
-Program licensed with the GNU GPL License V3.0, free to use
-https://www.gnu.org/licenses/gpl-3.0.en.html
+Fencing scores in available in F-Droid repositories
+https://f-droid.org/en/packages/com.fencing.scores/
+Program licensed with the GNU GPL License V3.0 or later, free to use https://www.gnu.org/licenses/gpl-3.0.en.html
+Bugs? https://github.com/leodp/Fencing_scores/issues
 For info contact leodp@yahoo.com

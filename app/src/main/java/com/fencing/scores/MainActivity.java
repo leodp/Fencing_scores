@@ -1563,7 +1563,16 @@ public class MainActivity extends AppCompatActivity {
     
     private void showHelpDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Help");
+        String versionName = "unknown";
+        try {
+            versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+        }
+        String helpTitle = "Help page - Fencing scores V." + versionName;
+        android.text.SpannableString styledTitle = new android.text.SpannableString(helpTitle);
+        styledTitle.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+            0, styledTitle.length(), android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        builder.setTitle(styledTitle);
         
         // Create main vertical layout
         LinearLayout mainLayout = new LinearLayout(this);
@@ -1653,7 +1662,24 @@ public class MainActivity extends AppCompatActivity {
             helpContent = "Error loading help content.";
         }
         
-        helpText.setText(helpContent);
+        android.text.SpannableString styledHelp = new android.text.SpannableString(helpContent);
+        helpText.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);
+        int lineStart = 0;
+        while (lineStart < styledHelp.length()) {
+            int lineEnd = helpContent.indexOf('\n', lineStart);
+            if (lineEnd == -1) {
+                lineEnd = styledHelp.length();
+            }
+            String helpLine = helpContent.substring(lineStart, lineEnd).trim();
+            if (helpLine.startsWith("#") || helpLine.startsWith("**")
+                || helpLine.startsWith("OVERVIEW ACTIONS")
+                || helpLine.equals("INTERACTION:")) {
+                styledHelp.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    lineStart, lineEnd, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            lineStart = lineEnd + 1;
+        }
+        helpText.setText(styledHelp);
         
         // Enable clickable links - use standard LinkMovementMethod
         android.text.util.Linkify.addLinks(helpText, android.text.util.Linkify.WEB_URLS | android.text.util.Linkify.EMAIL_ADDRESSES);

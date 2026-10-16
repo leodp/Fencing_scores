@@ -1,5 +1,22 @@
 # Changelog
 
+## [V2.26 - 2026-10-16] (Development)
+
+### Import and Export Safety
+- Exported Round CSV and QR data now include calculated `P` positions for documentation.
+- Round imports continue to recalculate `P` from names and bout results.
+- Round pages reject Merged CSV and QR data, and the Merged page rejects Round CSV and QR data.
+- Merged CSV and QR exports preserve `Grp` and `FinalPos` metadata.
+- Merged QR import reads `FinalPos` from its named column and reports wrong-page imports clearly.
+
+### Backup and QR Handling
+- QR cancellation leaves existing Merged data unchanged.
+- Merged backups are written through a temporary file before replacement.
+
+### Help and Documentation
+- Updated the Help popup F-Droid link, headings, license text, and responsive line breaking.
+- Updated the Help popup title to use the installed app version.
+
 ## [V2.25 - 2026-10-09]
 
 ### Storage and F-Droid Follow-up

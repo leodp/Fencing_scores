@@ -77,6 +77,8 @@ public class MergedFragment extends Fragment {
                             registerForActivityResult(new ScanContract(), result -> {
                                 if (result.getContents() != null) {
                                     handleQrScanResult(result.getContents());
+                                } else {
+                                    finishQrImportWithoutChanges();
                                 }
                             });
                         
@@ -85,6 +87,8 @@ public class MergedFragment extends Fragment {
                             registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
                                 if (uri != null) {
                                     decodeQrFromImage(uri);
+                                } else {
+                                    finishQrImportWithoutChanges();
                                 }
                             });
                         
@@ -238,24 +242,33 @@ public class MergedFragment extends Fragment {
                 if (com.fencing.scores.MainActivity.cleanExitInProgress) return;
                 java.io.File filesDir = requireContext().getFilesDir();
                 java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
-                java.io.FileWriter writer = new java.io.FileWriter(backupFile, false);
-                // Write header
-                writer.write("Nr,Name,#,V,→,←,I,%,P,FinalPos\n");
-                for (Row r : rows) {
-                    writer.write(
-                        r.nr + "," +
-                        (r.name != null ? r.name : "") + "," +
-                        r.matches + "," +   // #
-                        r.victories + "," + // V
-                        r.given + "," +     // →
-                        r.received + "," +  // ←
-                        r.index + "," +     // I
-                        r.percent + "," +   // %
-                        r.p + "," +         // P
-                        (r.finalPos != null ? r.finalPos : "") + "\n"   // FinalPos
-                    );
+                java.io.File temporaryBackupFile = new java.io.File(filesDir, "Merged_backup.csv.tmp");
+                try (java.io.FileWriter writer = new java.io.FileWriter(temporaryBackupFile, false)) {
+                    writer.write("Nr,Name,#,V,→,←,I,%,P,Grp,FinalPos\n");
+                    for (Row r : rows) {
+                        writer.write(
+                            r.nr + "," +
+                            (r.name != null ? r.name : "") + "," +
+                            r.matches + "," +
+                            r.victories + "," +
+                            r.given + "," +
+                            r.received + "," +
+                            r.index + "," +
+                            r.percent + "," +
+                            r.p + "," +
+                            (r.grp != null ? r.grp : "A") + "," +
+                            (r.finalPos != null ? r.finalPos : "") + "\n"
+                        );
+                    }
                 }
-                writer.close();
+                try {
+                    java.nio.file.Files.move(temporaryBackupFile.toPath(), backupFile.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    java.nio.file.Files.move(temporaryBackupFile.toPath(), backupFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
                 android.util.Log.i("MergedFragment", "Backup saved to: " + backupFile.getAbsolutePath() + " (" + rows.size() + " rows)");
             } catch (Exception e) {
                 android.util.Log.e("MergedFragment", "Backup failed: " + e.getMessage());
@@ -288,8 +301,7 @@ public class MergedFragment extends Fragment {
                     return;
                 }
                 java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(os);
-                // Write header - same format as backup
-                writer.write("Nr,Name,#,V,→,←,I,%,P,FinalPos\n");
+                writer.write("Nr,Name,#,V,→,←,I,%,P,Grp,FinalPos\n");
                 for (Row r : rows) {
                     writer.write(
                         r.nr + "," +
@@ -301,6 +313,7 @@ public class MergedFragment extends Fragment {
                         r.index + "," +
                         r.percent + "," +
                         r.p + "," +
+                        (r.grp != null ? r.grp : "A") + "," +
                         (r.finalPos != null ? r.finalPos : "") + "\n"
                     );
                 }
@@ -1062,6 +1075,13 @@ public class MergedFragment extends Fragment {
                         else break;
                     }
                     boolean isRoundFormat = (nrPart > 0);
+                    if (isRoundFormat) {
+                        android.widget.Toast.makeText(getContext(),
+                            "Import not done: this data comes from the Round page.",
+                            android.widget.Toast.LENGTH_LONG).show();
+                        reader.close();
+                        return;
+                    }
                     // android.util.Log.i("MergedFragment", "CSV format detected: " + (isRoundFormat ? "RoundFragment (nrPart=" + nrPart + ")" : "Merged"));
                     
                     // Read all data lines first
@@ -2241,6 +2261,7 @@ public class MergedFragment extends Fragment {
         new androidx.appcompat.app.AlertDialog.Builder(requireContext())
             .setTitle("Add from QR Code")
             .setItems(new String[]{"Camera", "Gallery"}, (dialog, which) -> {
+                dialog.dismiss();
                 if (which == 0) {
                     launchCameraScanner();
                 } else {
@@ -2249,6 +2270,12 @@ public class MergedFragment extends Fragment {
             })
             .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private void finishQrImportWithoutChanges() {
+        if (isAdded() && getView() != null && tableLayout != null && tableLayoutRight != null) {
+            renderRows();
+        }
     }
     
     // Launch camera scanner
@@ -2318,6 +2345,13 @@ public class MergedFragment extends Fragment {
                 android.widget.Toast.makeText(getContext(), "Invalid data format", android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
+
+            if (lines[0].trim().equals("ROUND_DATA")) {
+                android.widget.Toast.makeText(getContext(),
+                    "Import not done: this data comes from the Round page.",
+                    android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
             
             java.util.List<Row> incomingRows = new java.util.ArrayList<>();
             String headerLine = lines[0].trim();
@@ -2332,6 +2366,19 @@ public class MergedFragment extends Fragment {
                     idxGrpInQr = h;
                     break;
                 }
+            }
+            int idxFinalPosInQr = -1;
+            for (int h = 0; h < headerCols.length; h++) {
+                if (headerCols[h].trim().equals("FinalPos")) {
+                    idxFinalPosInQr = h;
+                    break;
+                }
+            }
+            if (idxGrpInQr < 0 || idxFinalPosInQr < 0) {
+                android.widget.Toast.makeText(getContext(),
+                    "Import not done: this is not Merged page data.",
+                    android.widget.Toast.LENGTH_LONG).show();
+                return;
             }
             
             // Skip header, parse data rows and add to existing
@@ -2353,7 +2400,8 @@ public class MergedFragment extends Fragment {
                 int p = parseInt(cols[base + 5], 0);
                 String grp = (idxGrpInQr >= 0 && idxGrpInQr < cols.length && !cols[idxGrpInQr].isEmpty()) ? cols[idxGrpInQr].trim() : "A";
                 if (matches <= 0) matches = inferMatches(victories, percent);
-                Integer finalPos = cols.length > (base + 6) && !cols[base + 6].isEmpty() ? parseInt(cols[base + 6], 0) : null;
+                Integer finalPos = idxFinalPosInQr < cols.length && !cols[idxFinalPosInQr].isEmpty()
+                    ? parseInt(cols[idxFinalPosInQr], 0) : null;
 
                 incomingRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
             }

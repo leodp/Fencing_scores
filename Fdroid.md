@@ -227,7 +227,7 @@ F-Droid automatically tracks GitHub releases. Steps:
    - GitHub URL: https://github.com/leodp/Fencing_scores
    - Description: (from description.txt above)
    - Screenshots: (if required)
-   - License: GNU GPLv3
+  - License: GNU GPLv3
 4. Submit and wait for review
 
 ### Phase 3: Maintenance (Ongoing)
