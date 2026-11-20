@@ -40,7 +40,6 @@ import android.view.WindowManager;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import androidx.core.content.ContextCompat;
-import androidx.core.app.ActivityCompat;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -63,9 +62,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import android.net.Uri;
 import android.provider.MediaStore;
 import java.io.ByteArrayOutputStream;
-import java.io.ByteArrayInputStream;
 import java.util.zip.GZIPOutputStream;
-import java.util.zip.GZIPInputStream;
 import android.util.Base64;
 
 public class MergedFragment extends Fragment {
@@ -77,8 +74,6 @@ public class MergedFragment extends Fragment {
                             registerForActivityResult(new ScanContract(), result -> {
                                 if (result.getContents() != null) {
                                     handleQrScanResult(result.getContents());
-                                } else {
-                                    finishQrImportWithoutChanges();
                                 }
                             });
                         
@@ -87,8 +82,6 @@ public class MergedFragment extends Fragment {
                             registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
                                 if (uri != null) {
                                     decodeQrFromImage(uri);
-                                } else {
-                                    finishQrImportWithoutChanges();
                                 }
                             });
                         
@@ -98,6 +91,13 @@ public class MergedFragment extends Fragment {
                         @Override
                         public void onCreate(@Nullable Bundle savedInstanceState) {
                             super.onCreate(savedInstanceState);
+                            if (savedInstanceState != null) {
+                                qrReplace = savedInstanceState.getBoolean("mergedQrReplace");
+                                @SuppressWarnings("unchecked")
+                                java.util.ArrayList<Row> savedRows =
+                                        (java.util.ArrayList<Row>) savedInstanceState.getSerializable("mergedRows");
+                                if (savedRows != null) rows = savedRows;
+                            }
                             // Register file picker before view is created
                             saveFileLauncher = registerForActivityResult(
                                 new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
@@ -137,55 +137,18 @@ public class MergedFragment extends Fragment {
                         // If not, fall back to loading from Round's Fencing_backup.csv
                         // Only restores after a crash, not on normal app restart
                         private void tryAutoRestoreFromBackup() {
-                            // Only restore if app crashed - normal restart should start fresh
-                            if (!com.fencing.scores.MainActivity.crashDetected) {
-                                return;
-                            }
                             try {
                                 java.io.File filesDir = requireContext().getFilesDir();
                                 java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
                                 
                                 // First try Merged_backup.csv
                                 if (backupFile.exists()) {
-                                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
-                                    String header = reader.readLine();
-                                    if (header != null) {
-                                        java.util.List<Row> loadedRows = new java.util.ArrayList<>();
-                                        String line;
-                                        while ((line = reader.readLine()) != null) {
-                                            String[] tokens = line.split(",", -1);
-                                            if (tokens.length >= 2) {
-                                                String name = tokens[1].trim();
-                                                if (name != null && !name.isEmpty()) {
-                                                    int nr = tokens.length > 0 ? parseIntSafe(tokens[0]) : loadedRows.size() + 1;
-                                                    boolean hasMatchesColumn = header.contains(",#,") || header.contains(",Matches,");
-                                                    int base = hasMatchesColumn ? 3 : 2;
-                                                    int matches = hasMatchesColumn && tokens.length > 2 ? parseIntSafe(tokens[2]) : 0;
-                                                    int victories = tokens.length > base ? parseIntSafe(tokens[base]) : 0;
-                                                    int given = tokens.length > (base + 1) ? parseIntSafe(tokens[base + 1]) : 0;
-                                                    int received = tokens.length > (base + 2) ? parseIntSafe(tokens[base + 2]) : 0;
-                                                    int index = tokens.length > (base + 3) ? parseIntSafe(tokens[base + 3]) : 0;
-                                                    int percent = tokens.length > (base + 4) ? parseIntSafe(tokens[base + 4]) : 0;
-                                                    int p = tokens.length > (base + 5) ? parseIntSafe(tokens[base + 5]) : 0;
-                                                    Integer finalPos = tokens.length > (base + 6) && !tokens[base + 6].trim().isEmpty() ? parseIntSafe(tokens[base + 6]) : null;
-                                                    loadedRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, "A", finalPos));
-                                                }
-                                            }
-                                        }
-                                        reader.close();
-                                        
-                                        if (!loadedRows.isEmpty()) {
-                                            rows.clear();
-                                            rows.addAll(loadedRows);
-                                            return; // Success, no need to fall back
-                                        }
-                                    }
-                                    reader.close();
+                                    if (readMergedBackup()) return;
                                 }
-                                
+
                                 // Fall back to Fencing_backup.csv (Round data) if Merged backup doesn't exist or is empty
                                 java.io.File roundBackupFile = new java.io.File(filesDir, "Fencing_backup.csv");
-                                if (roundBackupFile.exists()) {
+                                if (com.fencing.scores.MainActivity.crashDetected && roundBackupFile.exists()) {
                                     loadRoundData();
                                 }
                             } catch (Exception e) {
@@ -329,7 +292,12 @@ public class MergedFragment extends Fragment {
     private static final String[] HEADERS = {"Nr", "Name", "#", "V", "→", "←", "I", "%", "P", "Grp", "FinalPos"};
     private TableLayout tableLayout;
     private TableLayout tableLayoutRight;  // Right side table for split view
-    private Button replaceCsvBtn, addCsvBtn, reloadBtn;
+    private static final int LOAD_CSV = 1001, ADD_CSV = 1002;
+    private boolean qrReplace;
+    private final ActivityResultLauncher<String> cameraPermission =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (granted) launchCameraScanner();
+            });
     private java.util.List<Row> rows = new java.util.ArrayList<>();
     private boolean useCsvOnly = false;
     private boolean didRestore = false;
@@ -340,7 +308,46 @@ public class MergedFragment extends Fragment {
     private boolean mixedGroupsDetected = false;
     private boolean reloadedDistinctGroupsMerged = false;
 
-    static class Row {
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("mergedQrReplace", qrReplace);
+        outState.putSerializable("mergedRows", new java.util.ArrayList<>(rows));
+    }
+
+    private boolean readMergedBackup() {
+        java.io.File file = new java.io.File(requireContext().getFilesDir(), "Merged_backup.csv");
+        try (java.io.Reader reader = new java.io.FileReader(file)) {
+            MergedImport imported = MergedImport.decode(reader, false);
+            if (imported.bouts) return false;
+            rows = imported.rows;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Button toolbarButton(LinearLayout bar, String label, int color) {
+        Button button = new Button(requireContext());
+        button.setAllCaps(false);
+        button.setText(label);
+        setRoundedBackground(button, color);
+        button.setTextColor(color == 0xFFFFD800 ? Color.BLACK : Color.WHITE);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(1, 0, 1, 0);
+        button.setMaxLines(2);
+        button.setAutoSizeTextTypeUniformWithConfiguration(6, 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+        float density = getResources().getDisplayMetrics().density;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Math.round(48 * density),
+                label.startsWith("RELOAD") ? 1.4f : 1f);
+        if (bar.getChildCount() != 0) lp.setMarginStart(Math.round(2 * density));
+        bar.addView(button, lp);
+        return button;
+    }
+
+    static class Row implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
         int nr;
         String name;
         int matches;
@@ -370,89 +377,15 @@ public class MergedFragment extends Fragment {
         tableLayout = root.findViewById(R.id.tableLayout);
         tableLayoutRight = root.findViewById(R.id.tableLayoutRight);
         LinearLayout btnLayout = root.findViewById(R.id.btnLayout);
-        btnLayout.removeAllViews();
-        
-        // Dark blue color matching KO page
-        int darkBlue = 0xFF1565C0;
-        int btnMargin = 4; // Close but not touching
-        float btnMinWidthDp = 96 * 1.2f; // 20% wider than base
-        int btnMinWidth = (int)(btnMinWidthDp * getResources().getDisplayMetrics().density);
-        
-        reloadBtn = new Button(getContext());
-        reloadBtn.setText("RELOAD round");
-        setRoundedBackground(reloadBtn, 0xFF388E3C); // Green
-        reloadBtn.setTextColor(0xFFFFFFFF);
-        reloadBtn.setMinWidth(btnMinWidth);
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp1.setMargins(0, 0, btnMargin, 0);
-        reloadBtn.setLayoutParams(lp1);
-        btnLayout.addView(reloadBtn);
-        
-        replaceCsvBtn = new Button(getContext());
-        replaceCsvBtn.setText("REPLACE");
-        setRoundedBackground(replaceCsvBtn, darkBlue);
-        replaceCsvBtn.setTextColor(0xFFFFFFFF);
-        replaceCsvBtn.setMinWidth(btnMinWidth);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp2.setMargins(0, 0, btnMargin, 0);
-        replaceCsvBtn.setLayoutParams(lp2);
-        btnLayout.addView(replaceCsvBtn);
-        
-        addCsvBtn = new Button(getContext());
-        addCsvBtn.setText("ADD");
-        setRoundedBackground(addCsvBtn, darkBlue);
-        addCsvBtn.setTextColor(0xFFFFFFFF);
-        addCsvBtn.setMinWidth(btnMinWidth);
-        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp3.setMargins(0, 0, btnMargin, 0);
-        addCsvBtn.setLayoutParams(lp3);
-        btnLayout.addView(addCsvBtn);
-        
-        Button restoreBtn = new Button(getContext());
-        restoreBtn.setText("RESTORE crash");
-        setRoundedBackground(restoreBtn, darkBlue);
-        restoreBtn.setTextColor(0xFFFFFFFF);
-        restoreBtn.setMinWidth(btnMinWidth);
-        restoreBtn.setOnClickListener(v -> {
-            // android.util.Log.v("MergedFragment", "RESTORE button pressed - loading from Merged_backup.csv");
-            restoreData();
-        });
-        LinearLayout.LayoutParams lpRestore = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpRestore.setMargins(0, 0, btnMargin, 0);
-        restoreBtn.setLayoutParams(lpRestore);
-        btnLayout.addView(restoreBtn);
-        
-        // QR OUT button - generates QR code from Merged data
-        Button qrOutBtn = new Button(getContext());
-        qrOutBtn.setText("QR OUT");
-        setRoundedBackground(qrOutBtn, darkBlue);
-        qrOutBtn.setTextColor(0xFFFFFFFF);
-        qrOutBtn.setMinWidth(btnMinWidth);
-        qrOutBtn.setOnClickListener(v -> showQrCodeFullscreen());
-        LinearLayout.LayoutParams lpQrOut = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpQrOut.setMargins(0, 0, btnMargin, 0);
-        qrOutBtn.setLayoutParams(lpQrOut);
-        btnLayout.addView(qrOutBtn);
-        
-        // QR ADD button - scans QR code to add data
-        Button qrInBtn = new Button(getContext());
-        qrInBtn.setText("QR ADD");
-        setRoundedBackground(qrInBtn, darkBlue);
-        qrInBtn.setTextColor(0xFFFFFFFF);
-        qrInBtn.setMinWidth(btnMinWidth);
-        qrInBtn.setOnClickListener(v -> startQrScanner());
-        LinearLayout.LayoutParams lpQrIn = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpQrIn.setMargins(0, 0, btnMargin, 0);
-        qrInBtn.setLayoutParams(lpQrIn);
-        btnLayout.addView(qrInBtn);
-        
-        // SAVE button - exports ranking to CSV file
-        Button saveBtn = new Button(getContext());
-        saveBtn.setText("SAVE");
-        setRoundedBackground(saveBtn, 0xFFD32F2F); // Red color
-        saveBtn.setTextColor(0xFFFFFFFF);
-        saveBtn.setOnClickListener(v -> openSaveFilePicker());
-        btnLayout.addView(saveBtn);
+        int blue = requireContext().getColor(R.color.action_button_blue), yellow = 0xFFFFD800;
+        Button reloadBtn = toolbarButton(btnLayout, "RELOAD Rounds", 0xFF388E3C);
+        toolbarButton(btnLayout, "CSV Load", blue).setOnClickListener(v -> selectCsvFile(LOAD_CSV));
+        toolbarButton(btnLayout, "QR Load", blue).setOnClickListener(v -> startQrScanner(true));
+        toolbarButton(btnLayout, "CSV Add", blue).setOnClickListener(v -> selectCsvFile(ADD_CSV));
+        toolbarButton(btnLayout, "QR Add", blue).setOnClickListener(v -> startQrScanner(false));
+        toolbarButton(btnLayout, "CSV Save", yellow).setOnClickListener(v -> openSaveFilePicker());
+        toolbarButton(btnLayout, "QR Save", yellow).setOnClickListener(v -> showQrCodeFullscreen());
+        toolbarButton(btnLayout, "RESTORE", blue).setOnClickListener(v -> restoreData());
 
         // RELOAD always fetches from RoundFragment
         reloadBtn.setOnClickListener(v -> {
@@ -467,9 +400,6 @@ public class MergedFragment extends Fragment {
                 .setNegativeButton("Cancel", null)
                 .show();
         });
-        replaceCsvBtn.setOnClickListener(v -> selectCsvFile(1001));
-        addCsvBtn.setOnClickListener(v -> selectCsvFile(1002));
-        
         return root;
     }
     
@@ -630,13 +560,6 @@ public class MergedFragment extends Fragment {
     // Helper to safely parse integers
     private int parseIntSafe(String s) {
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return 0; }
-    }
-
-    private int inferMatches(int victories, int percent) {
-        if (victories <= 0) return 0;
-        if (percent <= 0) return victories;
-        int estimated = (int) Math.round((victories * 100.0) / percent);
-        return Math.max(victories, estimated);
     }
 
     private String normalizeName(String name) {
@@ -925,14 +848,21 @@ public class MergedFragment extends Fragment {
         }
     }
 
-    private void applyImportedRows(java.util.List<Row> importedRows, boolean replace, String sourceLabel) {
+    static void addBoutTotals(Row current, Row incoming) {
+        current.matches += incoming.matches;
+        current.victories += incoming.victories;
+        current.given += incoming.given;
+        current.received += incoming.received;
+    }
+
+    private void applyImportedRows(MergedImport imported, boolean replace, String sourceLabel) {
+        java.util.List<Row> importedRows = imported.rows;
         if (replace) {
             rows.clear();
             rows.addAll(importedRows);
             mixedGroupsDetected = false;
-            renumberRows();
-            refreshRowDerivedMetrics();
-            calculateFinalPositions();
+            useCsvOnly = true;
+            if (imported.bouts) calculateFinalPositions();
             backupMergedMatrix();
             renderRows();
             android.widget.Toast.makeText(getContext(), "Replaced " + importedRows.size() + " participants from " + sourceLabel, android.widget.Toast.LENGTH_LONG).show();
@@ -961,10 +891,7 @@ public class MergedFragment extends Fragment {
                     rows.add(in);
                     byName.put(key, in);
                 } else {
-                    cur.matches += in.matches;
-                    cur.victories += in.victories;
-                    cur.given += in.given;
-                    cur.received += in.received;
+                    addBoutTotals(cur, in);
                 }
             }
 
@@ -1022,10 +949,7 @@ public class MergedFragment extends Fragment {
                 rows.add(in);
                 byName.put(key, in);
             } else {
-                cur.matches += in.matches;
-                cur.victories += in.victories;
-                cur.given += in.given;
-                cur.received += in.received;
+                addBoutTotals(cur, in);
             }
             existingNameToGroup.put(key, targetGroupId);
         }
@@ -1058,176 +982,14 @@ public class MergedFragment extends Fragment {
     @Override
     public void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if ((requestCode == 1001 || requestCode == 1002) && resultCode == android.app.Activity.RESULT_OK && data != null) {
-            android.net.Uri uri = data.getData();
-            if (uri != null) {
-                try {
-                    java.io.InputStream is = getContext().getContentResolver().openInputStream(uri);
-                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is));
-                    String headerLine = reader.readLine();
-                    if (headerLine == null) return;
-                    String[] header = headerLine.split(",");
-                    
-                    // Detect RoundFragment format: header has numeric bout columns (1, 2, 3, ...)
-                    int nrPart = 0;
-                    for (int i = 2; i < header.length; i++) {
-                        if (header[i].trim().matches("\\d+")) nrPart++;
-                        else break;
-                    }
-                    boolean isRoundFormat = (nrPart > 0);
-                    if (isRoundFormat) {
-                        android.widget.Toast.makeText(getContext(),
-                            "Import not done: this data comes from the Round page.",
-                            android.widget.Toast.LENGTH_LONG).show();
-                        reader.close();
-                        return;
-                    }
-                    // android.util.Log.i("MergedFragment", "CSV format detected: " + (isRoundFormat ? "RoundFragment (nrPart=" + nrPart + ")" : "Merged"));
-                    
-                    // Read all data lines first
-                    java.util.List<String[]> allTokens = new java.util.ArrayList<>();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        allTokens.add(line.split(",", -1)); // -1 preserves trailing empty strings
-                    }
-                    reader.close();
-                    
-                    java.util.List<Row> csvRows = new java.util.ArrayList<>();
-                    
-                    if (isRoundFormat) {
-                        // RoundFragment format: parse bout results and calculate stats
-                        int[][] boutResults = new int[allTokens.size()][allTokens.size()];
-                        for (int i = 0; i < allTokens.size(); i++) {
-                            for (int j = 0; j < allTokens.size(); j++) {
-                                boutResults[i][j] = -1;
-                            }
-                        }
-                        
-                        // Parse bout results for each participant
-                        for (int i = 0; i < allTokens.size(); i++) {
-                            String[] tokens = allTokens.get(i);
-                            if (tokens.length < 2) continue;
-                            
-                            // Parse bout columns (columns 2 to 2+nrPart-1)
-                            for (int j = 0; j < nrPart && (2 + j) < tokens.length; j++) {
-                                String boutVal = tokens[2 + j].trim();
-                                if (!boutVal.isEmpty() && !boutVal.equalsIgnoreCase("X")) {
-                                    try {
-                                        boutResults[i][j] = Integer.parseInt(boutVal);
-                                    } catch (Exception e) {
-                                        boutResults[i][j] = -1;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Now calculate stats from bout results
-                        java.util.List<int[]> csvStatsForRanking = new java.util.ArrayList<>();
-                        for (int i = 0; i < allTokens.size(); i++) {
-                            String[] tokens = allTokens.get(i);
-                            if (tokens.length < 2) continue;
-                            
-                            int nr = i + 1;
-                            String name = tokens[1];
-                            
-                            int victories = 0, given = 0, received = 0, boutsWon = 0, boutsLost = 0;
-                            boolean hasBout = false;
-                            for (int j = 0; j < allTokens.size(); j++) {
-                                if (i != j && boutResults[i][j] >= 0 && boutResults[j][i] >= 0) {
-                                    int myScore = boutResults[i][j];
-                                    int oppScore = boutResults[j][i];
-                                    if (myScore > oppScore) {
-                                        victories++;
-                                        boutsWon++;
-                                    } else if (myScore < oppScore) {
-                                        boutsLost++;
-                                    }
-                                    given += myScore;
-                                    received += oppScore;
-                                    hasBout = true;
-                                }
-                            }
-                            int index = given - received;
-                            int percent = (boutsWon + boutsLost) > 0 ? (int) Math.round((double) boutsWon / (boutsWon + boutsLost) * 100) : 0;
-                            
-                            int matches = boutsWon + boutsLost;
-                            // P is 0 initially, will be ranked below
-                            csvRows.add(new Row(nr, name, matches, victories, given, received, index, percent, 0, "A", null));
-                            if (name != null && !name.trim().isEmpty() && hasBout) {
-                                csvStatsForRanking.add(new int[]{csvRows.size() - 1, percent, index, given});
-                            }
-                            // android.util.Log.i("MergedFragment", "CSV Round format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent);
-                        }
-                        // Calculate P ranking for CSV Round format rows
-                        csvStatsForRanking.sort((a, b) -> {
-                            int cmp = Integer.compare(b[1], a[1]); // percent DESC
-                            if (cmp != 0) return cmp;
-                            cmp = Integer.compare(b[2], a[2]); // index DESC
-                            if (cmp != 0) return cmp;
-                            return Integer.compare(b[3], a[3]); // given DESC
-                        });
-                        int csvPos = 1;
-                        for (int i = 0; i < csvStatsForRanking.size(); i++) {
-                            if (i > 0) {
-                                int[] prev = csvStatsForRanking.get(i - 1);
-                                int[] curr = csvStatsForRanking.get(i);
-                                boolean same = curr[1] == prev[1] && curr[2] == prev[2] && curr[3] == prev[3];
-                                if (!same) csvPos = i + 1;
-                            }
-                            csvRows.get(csvStatsForRanking.get(i)[0]).p = csvPos;
-                        }
-                    } else {
-                        // Merged format (no bout columns): use values directly from CSV
-                        int idxMatches = -1, idxV = -1, idxGiven = -1, idxReceived = -1, idxIndex = -1, idxPercent = -1, idxP = -1, idxGrp = -1, idxFinalPos = -1;
-                        for (int i = 0; i < header.length; i++) {
-                            String h = header[i].trim();
-                            if (h.equals("#") || h.equalsIgnoreCase("Matches")) idxMatches = i;
-                            else if (h.equals("V")) idxV = i;
-                            else if (h.equals("→") || h.equals("->")) idxGiven = i;
-                            else if (h.equals("←") || h.equals("<-")) idxReceived = i;
-                            else if (h.equals("I")) idxIndex = i;
-                            else if (h.equals("%")) idxPercent = i;
-                            else if (h.equals("P")) idxP = i;
-                            else if (h.equals("Grp")) idxGrp = i;
-                            else if (h.equals("FinalPos") || h.equals("Pos")) idxFinalPos = i;
-                        }
-                        
-                        for (int i = 0; i < allTokens.size(); i++) {
-                            String[] tokens = allTokens.get(i);
-                            if (tokens.length < 2) continue;
-                            
-                            int nr = parseIntSafe(tokens[0]);
-                            String name = tokens[1];
-                            int matches = (idxMatches >= 0 && idxMatches < tokens.length) ? parseIntSafe(tokens[idxMatches]) : 0;
-                            int victories = (idxV >= 0 && idxV < tokens.length) ? parseIntSafe(tokens[idxV]) : 0;
-                            int given = (idxGiven >= 0 && idxGiven < tokens.length) ? parseIntSafe(tokens[idxGiven]) : 0;
-                            int received = (idxReceived >= 0 && idxReceived < tokens.length) ? parseIntSafe(tokens[idxReceived]) : 0;
-                            int index = (idxIndex >= 0 && idxIndex < tokens.length) ? parseIntSafe(tokens[idxIndex]) : 0;
-                            int percent = (idxPercent >= 0 && idxPercent < tokens.length) ? parseIntSafe(tokens[idxPercent]) : 0;
-                            int p = (idxP >= 0 && idxP < tokens.length) ? parseIntSafe(tokens[idxP]) : 0;
-                            String grp = (idxGrp >= 0 && idxGrp < tokens.length && !tokens[idxGrp].trim().isEmpty()) ? tokens[idxGrp].trim() : "A";
-                            if (matches <= 0) matches = inferMatches(victories, percent);
-                            Integer finalPos = null;
-                            if (idxFinalPos >= 0 && idxFinalPos < tokens.length && !tokens[idxFinalPos].trim().isEmpty()) {
-                                finalPos = parseIntSafe(tokens[idxFinalPos]);
-                            }
-                            // P is kept as-is from CSV — never overwritten by FinalPos
-                            
-                            csvRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
-                            // android.util.Log.i("MergedFragment", "CSV Merged format row: nr=" + nr + ", name=" + name + ", V=" + victories + ", →=" + given + ", ←=" + received + ", I=" + index + ", %=" + percent + ", P=" + p + ", Grp=" + grp + ", FinalPos=" + finalPos);
-                        }
-                    }
-                    
-                    // android.util.Log.i("MergedFragment", "CSV loaded: " + csvRows.size() + " rows");
-                    
-                    applyImportedRows(csvRows, requestCode == 1001, "CSV");
-                    
-                } catch (Exception e) {
-                    android.util.Log.e("MergedFragment", "CSV load error: " + e.getMessage());
-                    e.printStackTrace();
-                    android.widget.Toast.makeText(getContext(), "CSV load error: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
-                }
-            }
+        if ((requestCode != LOAD_CSV && requestCode != ADD_CSV) || resultCode != android.app.Activity.RESULT_OK
+                || data == null || data.getData() == null) return;
+        try (java.io.InputStream stream = requireContext().getContentResolver().openInputStream(data.getData())) {
+            if (stream == null) throw new java.io.IOException("Could not open file");
+            applyImportedRows(MergedImport.decode(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8.newDecoder()), false),
+                    requestCode == LOAD_CSV, "CSV");
+        } catch (Exception e) {
+            android.widget.Toast.makeText(getContext(), "CSV import failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
     }
 
@@ -2115,26 +1877,6 @@ public class MergedFragment extends Fragment {
         }
     }
     
-    // Decompress Base64+GZIP data back to string
-    private String decompressData(String compressed) {
-        try {
-            byte[] data = Base64.decode(compressed, Base64.NO_WRAP);
-            ByteArrayInputStream bais = new ByteArrayInputStream(data);
-            GZIPInputStream gzis = new GZIPInputStream(bais);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buffer = new byte[1024];
-            int len;
-            while ((len = gzis.read(buffer)) > 0) {
-                baos.write(buffer, 0, len);
-            }
-            gzis.close();
-            return baos.toString("UTF-8");
-        } catch (Exception e) {
-            android.util.Log.e("MergedFragment", "Decompression failed", e);
-            return null;
-        }
-    }
-    
     // Get QR code module count for given data (for anti-aliasing calculation)
     private int getQrModuleCount(String data) {
         try {
@@ -2221,34 +1963,12 @@ public class MergedFragment extends Fragment {
         Dialog dialog = new Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         
-        // Create horizontal layout with vertical label + QR code
-        LinearLayout container = new LinearLayout(requireContext());
-        container.setOrientation(LinearLayout.HORIZONTAL);
-        container.setBackgroundColor(0xFFFFFFFF);
-        container.setGravity(Gravity.CENTER);
-        
-        // Vertical label "Merged ranking" on the left
-        TextView label = new TextView(requireContext());
-        label.setText("MergedRanking");
-        label.setTextColor(0xFF333333);
-        label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
-        label.setTypeface(null, android.graphics.Typeface.BOLD);
-        label.setRotation(-90);
-        label.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        labelParams.gravity = Gravity.CENTER;
-        label.setLayoutParams(labelParams);
-        container.addView(label);
-        
         ImageView imageView = new ImageView(requireContext());
-        imageView.setImageBitmap(qrBitmap);
-        imageView.setScaleType(ImageView.ScaleType.CENTER);
-        container.addView(imageView);
-        
-        container.setOnClickListener(v -> dialog.dismiss());
-        
-        dialog.setContentView(container);
+        imageView.setImageBitmap(new QrCaption("MergedRanking").beside(qrBitmap));
+        imageView.setBackgroundColor(Color.WHITE);
+        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        imageView.setOnClickListener(v -> dialog.dismiss());
+        dialog.setContentView(imageView);
         dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
         dialog.show();
         
@@ -2257,9 +1977,10 @@ public class MergedFragment extends Fragment {
     }
     
     // Start QR scanner - show dialog to choose camera or gallery
-    private void startQrScanner() {
+    private void startQrScanner(boolean replace) {
+        qrReplace = replace;
         new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setTitle("Add from QR Code")
+            .setTitle(replace ? "Load from QR Code" : "Add from QR Code")
             .setItems(new String[]{"Camera", "Gallery"}, (dialog, which) -> {
                 dialog.dismiss();
                 if (which == 0) {
@@ -2272,24 +1993,17 @@ public class MergedFragment extends Fragment {
             .show();
     }
 
-    private void finishQrImportWithoutChanges() {
-        if (isAdded() && getView() != null && tableLayout != null && tableLayoutRight != null) {
-            renderRows();
-        }
-    }
-    
     // Launch camera scanner
     private void launchCameraScanner() {
         // Check camera permission
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) 
                 != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(requireActivity(), 
-                new String[]{Manifest.permission.CAMERA}, 100);
+            cameraPermission.launch(Manifest.permission.CAMERA);
             return;
         }
         
         ScanOptions options = new ScanOptions();
-        options.setPrompt("Scan QR code to add participants");
+        options.setPrompt(qrReplace ? "Scan QR code to load participants" : "Scan QR code to add participants");
         options.setBeepEnabled(true);
         options.setOrientationLocked(false);
         options.setCaptureActivity(com.journeyapps.barcodescanner.CaptureActivity.class);
@@ -2326,101 +2040,11 @@ public class MergedFragment extends Fragment {
         }
     }
     
-    // Handle scanned QR code result - adds to existing data
     private void handleQrScanResult(String scannedData) {
-        // android.util.Log.i("MergedFragment", "QR ADD: Received " + scannedData.length() + " bytes");
-        
-        // Decompress the data
-        String csvData = decompressData(scannedData);
-        
-        if (csvData == null) {
-            android.widget.Toast.makeText(getContext(), "Failed to decode QR data", android.widget.Toast.LENGTH_LONG).show();
-            return;
-        }
-        
-        // Parse CSV and add to rows (not replace)
         try {
-            String[] lines = csvData.split("\n");
-            if (lines.length < 2) {
-                android.widget.Toast.makeText(getContext(), "Invalid data format", android.widget.Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            if (lines[0].trim().equals("ROUND_DATA")) {
-                android.widget.Toast.makeText(getContext(),
-                    "Import not done: this data comes from the Round page.",
-                    android.widget.Toast.LENGTH_LONG).show();
-                return;
-            }
-            
-            java.util.List<Row> incomingRows = new java.util.ArrayList<>();
-            String headerLine = lines[0].trim();
-            boolean hasMatches = headerLine.contains(",#,") || headerLine.contains(",Matches,");
-            int base = hasMatches ? 3 : 2;
-            
-            // Detect Grp column index by finding "Grp" in header
-            int idxGrpInQr = -1;
-            String[] headerCols = headerLine.split(",", -1);
-            for (int h = 0; h < headerCols.length; h++) {
-                if (headerCols[h].trim().equals("Grp")) {
-                    idxGrpInQr = h;
-                    break;
-                }
-            }
-            int idxFinalPosInQr = -1;
-            for (int h = 0; h < headerCols.length; h++) {
-                if (headerCols[h].trim().equals("FinalPos")) {
-                    idxFinalPosInQr = h;
-                    break;
-                }
-            }
-            if (idxGrpInQr < 0 || idxFinalPosInQr < 0) {
-                android.widget.Toast.makeText(getContext(),
-                    "Import not done: this is not Merged page data.",
-                    android.widget.Toast.LENGTH_LONG).show();
-                return;
-            }
-            
-            // Skip header, parse data rows and add to existing
-            for (int i = 1; i < lines.length; i++) {
-                String line = lines[i].trim();
-                if (line.isEmpty()) continue;
-                
-                String[] cols = line.split(",", -1);
-                if (cols.length < (base + 6)) continue;
-                
-                int nr = incomingRows.size() + 1;
-                String name = cols[1].replace(";", ",");
-                int matches = hasMatches ? parseInt(cols[2], 0) : 0;
-                int victories = parseInt(cols[base], 0);
-                int given = parseInt(cols[base + 1], 0);
-                int received = parseInt(cols[base + 2], 0);
-                int index = parseInt(cols[base + 3], 0);
-                int percent = parseInt(cols[base + 4], 0);
-                int p = parseInt(cols[base + 5], 0);
-                String grp = (idxGrpInQr >= 0 && idxGrpInQr < cols.length && !cols[idxGrpInQr].isEmpty()) ? cols[idxGrpInQr].trim() : "A";
-                if (matches <= 0) matches = inferMatches(victories, percent);
-                Integer finalPos = idxFinalPosInQr < cols.length && !cols[idxFinalPosInQr].isEmpty()
-                    ? parseInt(cols[idxFinalPosInQr], 0) : null;
-
-                incomingRows.add(new Row(nr, name, matches, victories, given, received, index, percent, p, grp, finalPos));
-            }
-
-            applyImportedRows(incomingRows, false, "QR");
-            
+            applyImportedRows(MergedImport.decodeQr(scannedData), qrReplace, "QR");
         } catch (Exception e) {
-            android.util.Log.e("MergedFragment", "Failed to parse QR data", e);
-            android.widget.Toast.makeText(getContext(), "Failed to parse data: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
-        }
-    }
-    
-    // Helper to parse int with default
-    private int parseInt(String s, int def) {
-        try {
-            return Integer.parseInt(s.trim());
-        } catch (Exception e) {
-            return def;
+            android.widget.Toast.makeText(getContext(), "QR import failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
         }
     }
 }
-

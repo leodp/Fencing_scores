@@ -1,97 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/white"
-    android:fillViewport="true"
-    android:scrollbars="none">
-
-    <HorizontalScrollView
-        android:id="@+id/ko_horizontalScrollView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="true"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <LinearLayout
-                android:id="@+id/ko_btnLayout"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <Spinner
-                    android:id="@+id/ko_modusSpinner"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
-                    android:background="@drawable/ko_modus_spinner_bg"
-                    android:popupBackground="@android:color/black" />
-                <Button
-                    android:id="@+id/ko_reloadBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:backgroundTint="#388E3C"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="RELOAD" />
-                <Button
-                    android:id="@+id/ko_replaceBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:backgroundTint="#1565C0"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="REPLACE" />
-                <Button
-                    android:id="@+id/ko_restoreCrashBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:backgroundTint="#1565C0"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="RESTORE CRASH" />
-                <Button
-                    android:id="@+id/ko_qrOutBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:backgroundTint="#1565C0"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="QR OUT" />
-                <Button
-                    android:id="@+id/ko_qrInBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:backgroundTint="#1565C0"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="QR IN" />
-                <Button
-                    android:id="@+id/ko_saveBtn"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:backgroundTint="#D32F2F"
-                    android:textColor="#FFFFFF"
-                    android:singleLine="true"
-                    android:text="SAVE" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/ko_boxLayout"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-
-        </LinearLayout>
-    </HorizontalScrollView>
-</ScrollView>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/white">
+    <LinearLayout android:id="@+id/ko_btnLayout" android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+        <Spinner android:id="@+id/ko_modusSpinner"
+            android:layout_width="0dp" android:layout_weight="2" android:layout_height="48dp"
+            android:background="@drawable/ko_modus_spinner_bg" android:popupBackground="@android:color/black" />
+        <Button style="@style/KoAction" android:id="@+id/ko_reloadBtn" android:text="RELOAD" />
+        <Button style="@style/KoAction" android:id="@+id/ko_replaceBtn" android:text="CSV Load" />
+        <Button style="@style/KoAction" android:id="@+id/ko_qrInBtn" android:text="QR Load" />
+        <Button style="@style/KoAction" android:id="@+id/ko_saveBtn" android:text="CSV Save" android:textColor="@color/black" app:backgroundTint="#FFD800" />
+        <Button style="@style/KoAction" android:id="@+id/ko_qrOutBtn" android:text="QR Save" android:textColor="@color/black" app:backgroundTint="#FFD800" />
+        <Button style="@style/KoAction" android:id="@+id/ko_restoreCrashBtn" android:text="RESTORE" />
+    </LinearLayout>
+    <com.fencing.scores.ui.KoViewport android:layout_width="match_parent" android:layout_height="match_parent"
+        android:fillViewport="true" android:scrollbars="none">
+        <HorizontalScrollView android:id="@+id/ko_horizontalScrollView"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:fillViewport="true" android:scrollbars="none">
+            <LinearLayout android:id="@+id/ko_boxLayout" android:orientation="vertical"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </HorizontalScrollView>
+    </com.fencing.scores.ui.KoViewport>
+</LinearLayout>

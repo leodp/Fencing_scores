@@ -1,0 +1,3 @@
+Version 2.27 adds reliable session and KO-mode recovery, Bouts imports in Merged, editable KO names, and clearer CSV/QR controls.
+
+QR images now include a page caption and local export timestamp. Toolbar colors, sizing, corners, and KO gestures are more consistent.

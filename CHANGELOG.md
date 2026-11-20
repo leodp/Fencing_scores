@@ -1,5 +1,19 @@
 # Changelog
 
+## [V2.27 - 2026-11-20]
+
+### Import, Export, and Session Recovery
+- Merged Load replaces the table, while Add combines standings. Both support Merged and Bouts CSV or QR data.
+- KO now restores its selected mode, roster, groups, and saved trees when the app reopens; Help → QUIT clears the session.
+- Bouts, Merged, and KO controls consistently distinguish CSV Load/Save and QR Load/Save.
+
+### Interface and QR Documentation
+- Standardized rounded controls, blue action buttons, yellow Save buttons with black text, and KO toolbar heights.
+- Unified dragging within the KO bracket, including panning from match boxes and page changes after reaching an edge.
+- KO participant names can be edited directly from the score popup and are updated throughout KO and Final results.
+- QR images now show a caption and the local `YYYY.MM.DD HH:mm:ss` export time without changing encoded data.
+- Rounds QR images identify Pool Results while leaving participant names, %, and P visible.
+
 ## [V2.26 - 2026-10-16] (Development)
 
 ### Import and Export Safety

@@ -54,9 +54,15 @@ OVERVIEW ACTIONS -------------------------------------------------
 
 
 **Help Dialog (2x3 grid):** buttons & show this help file
+LOAD CSV | SAVE CSV | RESTORE crash
+LOAD QR  | SAVE QR  | QUIT
+Use Rounds above 1 for separate pools or for repeated rounds with the same participants.
+Save and load each pool or round separately. Use distinct names for distinct people.
 
 
 ## Merged Page
+CSV Load / QR Load replace the table with saved Merged or Bouts standings.
+CSV Add / QR Add combine those standings with the existing table.
  Nr cells (top half) : Long press : Remove last participant
  Nr cells (bottom half) : Long press : Add participant
  Name/V/→/←/I/%/P cells : Click : Edit value
@@ -70,6 +76,8 @@ P cells : Long press : Toggle sort P increasing / decreasing
 ## KO Page
  Black KO button : Menu : Change KO modus
  Match button : Click : Enter match scores
+ Tap either participant in the score popup to rename them in KO and Results without changing their scores.
+ Drag a box or the background to pan. Continue horizontally at the bracket edge to change page.
 
 **Match popup Dialog:** Score buttons (0-15), RESET, CANCEL
 
@@ -84,7 +92,7 @@ Rounds1..RoundsN (pool) → Merged (aggregated rankings) → KO → Final (resul
 
 ## Automatic Backup
 Each page backs up to `{Page}_backup.csv` on changes
-Automatic crash detection via CRASH.txt flag file
+Reopening the app resumes the session, including the saved KO modus and trees.
 Backup recovered with RESTORE buttons
 QUIT performs a clean exit: all backup files are deleted and next start is clean
 

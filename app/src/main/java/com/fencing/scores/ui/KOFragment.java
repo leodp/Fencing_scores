@@ -219,6 +219,7 @@ public class KOFragment extends Fragment {
     // Multi-tree data for Quick KO and Mix-Rounds modes
     private java.util.List<KOGroup> koGroups = new ArrayList<>(); // Each group is a separate mini KO bracket
     private String[] koParticipantNames = null; // Local copy of participant names for KO (to avoid affecting RoundFragment)
+    private final java.util.Map<String, String> originalNames = new java.util.HashMap<>();
     private int koNrPart = 0; // Local copy of participant count
     private ScoresViewModel scoresViewModel;
     private ActivityResultLauncher<Intent> saveFileLauncher;
@@ -247,10 +248,6 @@ public class KOFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        // Auto-restore from backup if koRounds is empty
-        if (koRounds.isEmpty() && koBoxLayoutRef != null) {
-            tryAutoRestoreFromBackup();
-        }
         // Re-render if color changed while on another page
         int currentColorIdx = 0;
         try {
@@ -353,88 +350,6 @@ public class KOFragment extends Fragment {
         }
     }
     
-    // Try to restore from KO_backup.csv if it exists
-    // Only restores after a crash, not on normal app restart
-    private void tryAutoRestoreFromBackup() {
-        // Only restore if app crashed - normal restart should start fresh
-        if (!com.fencing.scores.MainActivity.crashDetected) {
-            android.util.Log.d("KOFragment", "No crash detected, skipping auto-restore");
-            return;
-        }
-        try {
-            java.io.File filesDir = requireContext().getFilesDir();
-            java.io.File backupFile = new java.io.File(filesDir, "KO_backup.csv");
-            if (!backupFile.exists()) {
-                android.util.Log.d("KOFragment", "No KO_backup.csv found for auto-restore");
-                return;
-            }
-            
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
-            String metaLine = reader.readLine();
-            if (metaLine == null) { reader.close(); return; }
-            
-            // Parse metadata line: #META,koSize,repechage[,modus]
-            int koSize = 8;
-            boolean repechage = false;
-            int restoredModus = 0;
-            if (metaLine.startsWith("#META,")) {
-                String[] metaParts = metaLine.split(",");
-                if (metaParts.length >= 3) {
-                    try { koSize = Integer.parseInt(metaParts[1].trim()); } catch (Exception e) {}
-                    repechage = "true".equalsIgnoreCase(metaParts[2].trim());
-                }
-                if (metaParts.length >= 4) {
-                    try { restoredModus = Integer.parseInt(metaParts[3].trim()); } catch (Exception e) {}
-                }
-                // Skip header line
-                reader.readLine();
-            } else {
-                // Old format without metadata - fall back to counting round 1 matches
-                // metaLine is actually the header, continue reading
-            }
-            
-            // Read match data
-            java.util.List<String> lines = new java.util.ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lines.add(line);
-            }
-            reader.close();
-            
-            // If old format (no META line), count round 1 matches to determine koSize
-            if (!metaLine.startsWith("#META,")) {
-                int round1Matches = 0;
-                for (String l : lines) {
-                    String[] parts = l.split(",");
-                    if (parts.length >= 1 && parts[0].trim().equals("1")) {
-                        round1Matches++;
-                    }
-                }
-                koSize = round1Matches * 2;
-                if (koSize < 4) koSize = 8;
-            }
-            
-            android.util.Log.d("KOFragment", "Auto-restore: koSize=" + koSize + ", repechage=" + repechage + ", modus=" + restoredModus);
-            koRepechage = repechage;
-            koModus = restoredModus;
-            koNrPart = koSize; // Set local nrPart from backup
-            
-            // Load participant names from Merged_backup.csv if available
-            loadParticipantNamesFromMerged();
-            
-            // Use processRestoredMatches for consistent restore logic
-            java.util.List<String> allLines = new java.util.ArrayList<>();
-            allLines.add(metaLine);
-            allLines.addAll(lines);
-            processRestoredMatches(allLines);
-            
-            android.util.Log.i("KOFragment", "Auto-restored " + lines.size() + " matches from KO_backup.csv");
-            
-        } catch (Exception e) {
-            android.util.Log.w("KOFragment", "Auto-restore failed: " + e.getMessage());
-        }
-    }
-
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -467,37 +382,6 @@ public class KOFragment extends Fragment {
         View root = inflater.inflate(R.layout.fragment_ko, container, false);
         scoresViewModel = new ViewModelProvider(requireActivity()).get(ScoresViewModel.class);
         
-        // Prevent ViewPager2 from stealing horizontal swipe when scrolling within KO content
-        android.widget.HorizontalScrollView horizontalScroll = root.findViewById(R.id.ko_horizontalScrollView);
-        if (horizontalScroll != null) {
-            horizontalScroll.setOnTouchListener((v, event) -> {
-                // Check if content is wider than the scroll view (has scrollable content)
-                int scrollRange = horizontalScroll.getChildAt(0).getWidth() - horizontalScroll.getWidth();
-                if (scrollRange > 0) {
-                    int scrollX = horizontalScroll.getScrollX();
-                    boolean atLeftEdge = (scrollX <= 0);
-                    boolean atRightEdge = (scrollX >= scrollRange);
-                    
-                    switch (event.getAction()) {
-                        case android.view.MotionEvent.ACTION_DOWN:
-                            // Always claim the touch initially to prevent ViewPager2 from intercepting
-                            horizontalScroll.getParent().requestDisallowInterceptTouchEvent(true);
-                            break;
-                        case android.view.MotionEvent.ACTION_MOVE:
-                            // Only allow parent (ViewPager2) to intercept at edges
-                            if (!atLeftEdge && !atRightEdge) {
-                                horizontalScroll.getParent().requestDisallowInterceptTouchEvent(true);
-                            }
-                            break;
-                        case android.view.MotionEvent.ACTION_UP:
-                        case android.view.MotionEvent.ACTION_CANCEL:
-                            horizontalScroll.getParent().requestDisallowInterceptTouchEvent(false);
-                            break;
-                    }
-                }
-                return false; // Let HorizontalScrollView handle the event normally
-            });
-        }
         
         LinearLayout koBoxLayout = root.findViewById(R.id.ko_boxLayout);
         koBoxLayoutRef = koBoxLayout; // Save reference for onResume
@@ -513,24 +397,6 @@ public class KOFragment extends Fragment {
         // Setup Spinner with KO modus entries
         setupModusSpinner(modusSpinner, koBoxLayout);
         
-        // Fix spinner width: measure the longest label text and set minimum width
-        // This prevents the spinner from being too narrow when showing short text like "KO"
-        modusSpinner.post(() -> {
-            float d = getResources().getDisplayMetrics().density;
-            android.graphics.Paint paint = new android.graphics.Paint();
-            paint.setTextSize(modusSpinner.getChildAt(0) instanceof TextView ?
-                ((TextView) modusSpinner.getChildAt(0)).getTextSize() : 14 * d);
-            paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-            float maxWidth = 0;
-            for (String label : KO_MODUS_LABELS) {
-                float w = paint.measureText(label);
-                if (w > maxWidth) maxWidth = w;
-            }
-            // Add padding for spinner arrow/dropdown indicator
-            int minWidth = (int)(maxWidth + 48 * d);
-            modusSpinner.setMinimumWidth(minWidth);
-            modusSpinner.requestLayout();
-        });
 
         // Observe ViewModel and update KO table reactively (only when resumed to save battery)
         scoresViewModel.getParticipantNames().observe(getViewLifecycleOwner(), names -> {
@@ -574,7 +440,7 @@ public class KOFragment extends Fragment {
         });
 
         // RESTORE CRASH button: restore KO state from KO_backup.csv
-        restoreCrashBtn.setOnClickListener(v -> restoreFromKOBackup(koBoxLayout));
+        restoreCrashBtn.setOnClickListener(v -> restoreKOBackup(true));
 
         // QR OUT button: generate and show QR code
         qrOutBtn.setOnClickListener(v -> generateAndShowKOQrCode());
@@ -585,7 +451,7 @@ public class KOFragment extends Fragment {
         // SAVE button: save KO results to CSV in Downloads
         saveBtn.setOnClickListener(v -> saveKOToCSV());
 
-        // Initial render
+        if (koRounds.isEmpty() && koGroups.isEmpty()) restoreKOBackup(false);
         renderKOTable(koBoxLayout);
         
         return root;
@@ -616,7 +482,11 @@ public class KOFragment extends Fragment {
                 tv.setTypeface(null, android.graphics.Typeface.BOLD);
                 tv.setGravity(android.view.Gravity.CENTER_VERTICAL);
                 tv.setMinHeight((int) (48 * density));
-                tv.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
+                tv.setSingleLine(false);
+                tv.setMaxLines(3);
+                tv.setHeight((int) (48 * density));
+                tv.setAutoSizeTextTypeUniformWithConfiguration(6, 14, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+                tv.setPadding((int) (2 * density), 0, (int) (2 * density), 0);
                 return view;
             }
             @Override
@@ -672,6 +542,7 @@ public class KOFragment extends Fragment {
                 } else {
                     renderKOTable(koBoxLayout);
                 }
+                backupKOTree();
             }
             
             @Override
@@ -1073,6 +944,7 @@ public class KOFragment extends Fragment {
     
     // Reload from Merged according to current KO modus
     private void reloadFromMergedWithModus(LinearLayout koBoxLayout) {
+        originalNames.clear();
         if (koModus <= 1) {
             // Standard KO or KO with Repechage - use existing logic
             reloadFromMerged(koBoxLayout);
@@ -1782,6 +1654,7 @@ public class KOFragment extends Fragment {
             }
             writer.write("#META," + koSizeMeta + "," + koRepechage + "," + koModus + "\n");
             writer.write("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
+            writer.write(snapshotRoster());
             
             if (koModus >= 2 && !koGroups.isEmpty()) {
                 // Write group data for Quick KO / Mix-Rounds modes
@@ -1856,7 +1729,7 @@ public class KOFragment extends Fragment {
     private String formatRepechageParticipantForCsv(String ref, String[] participantNames) {
         if (ref == null) return "Empty";
         String resolved = getLosersName(ref, participantNames);
-        if (resolved.equals("Empty") || resolved.equals("-")) return "Empty";
+        if (resolved.equals("Empty") || resolved.equals("-")) return ref;
         // Try to find position for the name
         if (participantNames != null) {
             for (int i = 0; i < participantNames.length; i++) {
@@ -2459,6 +2332,7 @@ public class KOFragment extends Fragment {
             java.io.File filesDir = requireContext().getFilesDir();
             java.io.File backupFile = new java.io.File(filesDir, "Merged_backup.csv");
             if (!backupFile.exists()) {
+                copyRenamedPositions(nameToFinalPos);
                 return nameToFinalPos;
             }
             java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
@@ -2633,7 +2507,14 @@ public class KOFragment extends Fragment {
         } catch (Exception e) {
             android.util.Log.w("KOFragment", "Could not load P from Merged: " + e.getMessage());
         }
+        copyRenamedPositions(nameToP);
         return nameToP;
+    }
+
+    private void copyRenamedPositions(java.util.Map<String, Integer> positions) {
+        originalNames.forEach((current, original) -> {
+            if (positions.containsKey(original)) positions.put(current, positions.get(original));
+        });
     }
 
     // Render KO table: header and participant rows (editable)
@@ -3767,6 +3648,96 @@ public class KOFragment extends Fragment {
         }
     }
 
+    private void scoreTitle(android.app.AlertDialog.Builder builder, String first, String second,
+            android.app.AlertDialog[] scoreDialog) {
+        LinearLayout title = new LinearLayout(requireContext());
+        int pad = (int) (12 * getResources().getDisplayMetrics().density);
+        title.setPadding(pad, pad, pad, 0);
+        for (String text : new String[]{first, "      Vs    ", second}) {
+            TextView label = new TextView(requireContext());
+            label.setText(text);
+            label.setTextSize(18);
+            title.addView(label);
+            if (text.equals(first) || text.equals(second)) {
+                label.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+                if (knownKOName(text)) label.setOnClickListener(v -> editKOName(text, scoreDialog[0]));
+            }
+        }
+        builder.setCustomTitle(title);
+    }
+
+    private boolean knownKOName(String name) {
+        if (name == null || name.isEmpty() || name.equals("Empty")) return false;
+        String[] roster = getKOParticipantNames();
+        if (roster != null && java.util.Arrays.asList(roster).contains(name)) return true;
+        for (KOGroup group : koGroups)
+            if (java.util.Arrays.asList(group.participants).contains(name)) return true;
+        return false;
+    }
+
+    private void editKOName(String old, android.app.AlertDialog scoreDialog) {
+        android.widget.EditText input = new android.widget.EditText(requireContext());
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        input.setText(old);
+        input.setSelectAllOnFocus(true);
+        android.app.AlertDialog editor = new android.app.AlertDialog.Builder(requireContext())
+            .setTitle("Edit Name").setView(input).setPositiveButton("Done", null)
+            .setNegativeButton("Cancel", null).create();
+        editor.setOnShowListener(d -> editor.getButton(-1).setOnClickListener(v -> {
+            String name = input.getText().toString().trim();
+            if (!name.isEmpty()) name = name.substring(0, 1).toUpperCase(java.util.Locale.getDefault()) + name.substring(1);
+            if (name.isEmpty() || name.contains(",") || name.equals("Empty") || name.matches("\\d+|[WL]\\d+")
+                    || (!old.equals(name) && knownKOName(name))) {
+                input.setError("Use a distinct participant name without commas or bracket references.");
+                return;
+            }
+            if (!old.equals(name)) renameKO(old, name);
+            editor.dismiss();
+            scoreDialog.dismiss();
+        }));
+        input.setOnEditorActionListener((v, action, key) -> {
+            if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE && (key == null
+                    || key.getKeyCode() != android.view.KeyEvent.KEYCODE_ENTER
+                    || key.getAction() != android.view.KeyEvent.ACTION_DOWN)) return false;
+            editor.getButton(-1).performClick();
+            return true;
+        });
+        input.requestFocus();
+        editor.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        editor.show();
+    }
+
+    private void renameKO(String old, String name) {
+        String original = originalNames.getOrDefault(old, old);
+        originalNames.remove(old);
+        originalNames.put(name, original);
+        String[] current = getKOParticipantNames();
+        if (current != null) {
+            koParticipantNames = current.clone(); // Do not change the Bouts page's roster.
+            java.util.Collections.replaceAll(java.util.Arrays.asList(koParticipantNames), old, name);
+        }
+        renameMatches(koRounds, old, name);
+        renameMatches(losersRounds, old, name);
+        for (RepechageTree tree : allRepechageTrees) renameMatches(tree.rounds, old, name);
+        for (KOGroup group : koGroups) {
+            java.util.Collections.replaceAll(java.util.Arrays.asList(group.participants), old, name);
+            renameMatches(group.rounds, old, name);
+        }
+        backupKOTree();
+        renderKOTable(koBoxLayoutRef);
+        updateFinalRankingsFromCurrentKOState();
+    }
+
+    private void renameMatches(List<List<Match>> rounds, String old, String name) {
+        for (List<Match> round : rounds) for (Match m : round) {
+            if (old.equals(m.p1)) m.p1 = name;
+            if (old.equals(m.p2)) m.p2 = name;
+            if (old.equals(m.winner)) m.winner = name;
+        }
+    }
+
     // Show dialog to enter match result
     private void showMatchDialog(Match match, String[] participantNames) {
         // For main bracket matches, resolve W/L refs using the same round-aware path as KO box rendering.
@@ -3781,7 +3752,6 @@ public class KOFragment extends Fragment {
             getLosersName(match.p2, participantNames) :
             getKOName(p2Ref, participantNames);
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
-        builder.setTitle(p1Name.toUpperCase() + "      Vs " + p2Name.toUpperCase());
 
         // Create grid for score selection (0-15)
         android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
@@ -3792,6 +3762,7 @@ public class KOFragment extends Fragment {
         float increasedTextSize = baseTextSize * 1.3f;
         final int[] selectedScores = new int[] { -1, -1 };
         final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        scoreTitle(builder, p1Name, p2Name, dialogRef);
         
         // Row 0: 0,1,2,3,4,5
         for (int col = 0; col < 6; col++) {
@@ -3989,7 +3960,6 @@ public class KOFragment extends Fragment {
             getLosersName(match.p2, participantNames) :
             getKOName(p2Ref, participantNames);
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
-        builder.setTitle(p2Name.toUpperCase() + "      Vs " + p1Name.toUpperCase());
 
         android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
         grid.setColumnCount(6);
@@ -3998,6 +3968,7 @@ public class KOFragment extends Fragment {
         float baseTextSize = 16f;
         float increasedTextSize = baseTextSize * 1.3f;
         final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        scoreTitle(builder, p2Name, p1Name, dialogRef);
         
         // Row 0: 0,1,2,3,4,5
         for (int col = 0; col < 6; col++) {
@@ -4524,7 +4495,6 @@ public class KOFragment extends Fragment {
         
         // First popup: score for p1 (same layout as showMatchDialog)
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
-        builder.setTitle(p1Name.toUpperCase() + "      Vs " + p2Name.toUpperCase());
         
         android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
         grid.setColumnCount(6);
@@ -4533,6 +4503,7 @@ public class KOFragment extends Fragment {
         float baseTextSize = 16f;
         float increasedTextSize = baseTextSize * 1.3f;
         final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        scoreTitle(builder, p1Name, p2Name, dialogRef);
         
         // Row 0: 0,1,2,3,4,5
         for (int col = 0; col < 6; col++) {
@@ -4711,7 +4682,6 @@ public class KOFragment extends Fragment {
         Match match = group.rounds.get(roundIdx).get(matchIdx);
         
         android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getContext());
-        builder.setTitle(p2Name.toUpperCase() + "      Vs " + p1Name.toUpperCase());
         
         android.widget.GridLayout grid = new android.widget.GridLayout(getContext());
         grid.setColumnCount(6);
@@ -4720,6 +4690,7 @@ public class KOFragment extends Fragment {
         float baseTextSize = 16f;
         float increasedTextSize = baseTextSize * 1.3f;
         final android.app.AlertDialog[] dialogRef = new android.app.AlertDialog[1];
+        scoreTitle(builder, p2Name, p1Name, dialogRef);
         
         // Row 0: 0,1,2,3,4,5
         for (int col = 0; col < 6; col++) {
@@ -5429,221 +5400,43 @@ public class KOFragment extends Fragment {
         }
     }
     
-    // Restore KO state from KO_backup.csv
-    private void restoreFromKOBackup(LinearLayout koBoxLayout) {
+    private void restoreKOBackup(boolean explicit) {
+        File backup = new File(requireContext().getFilesDir(), "KO_backup.csv");
+        if (!backup.exists()) {
+            if (explicit) Toast.makeText(requireContext(), "No KO backup found", Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
-            File filesDir = requireContext().getFilesDir();
-            File backupFile = new File(filesDir, "KO_backup.csv");
-            
-            if (!backupFile.exists()) {
-                Toast.makeText(getContext(), "KO_backup.csv not found", Toast.LENGTH_LONG).show();
-                return;
-            }
-            
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(backupFile));
-            String firstLine = reader.readLine();
-            if (firstLine == null) {
-                reader.close();
-                Toast.makeText(getContext(), "KO_backup.csv is empty", Toast.LENGTH_LONG).show();
-                return;
-            }
-            
-            // Parse metadata line: #META,koSize,repechage[,modus]
-            int koSize = 8;
-            boolean repechage = false;
-            int restoredModus = 0;
-            boolean hasMetaLine = false;
-            if (firstLine.startsWith("#META,")) {
-                hasMetaLine = true;
-                String[] metaParts = firstLine.split(",");
-                if (metaParts.length >= 3) {
-                    try { koSize = Integer.parseInt(metaParts[1].trim()); } catch (Exception e) {}
-                    repechage = "true".equalsIgnoreCase(metaParts[2].trim());
+            List<String> lines = java.nio.file.Files.readAllLines(backup.toPath());
+            if (lines.stream().noneMatch(line -> line.startsWith("Tree,"))) {
+                // Older backups omitted the tree column and contained only the main bracket.
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i).matches("[0-9]+,.*")) lines.set(i, "R1," + lines.get(i));
                 }
-                if (metaParts.length >= 4) {
-                    try { restoredModus = Integer.parseInt(metaParts[3].trim()); } catch (Exception e) {}
-                }
-                // Skip header line
-                reader.readLine();
             }
-            
-            // Read all data lines
-            java.util.List<String> lines = new java.util.ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lines.add(line);
-            }
-            reader.close();
-            
-            // If old format (no META line), count round 1 matches
-            if (!hasMetaLine) {
-                int round1Matches = 0;
-                for (String l : lines) {
-                    String[] parts = l.split(",");
-                    if (parts.length >= 1 && parts[0].trim().equals("1")) {
-                        round1Matches++;
-                    }
-                }
-                koSize = round1Matches * 2;
-                if (koSize < 4) koSize = 8;
-            }
-            
-            android.util.Log.d("KOFragment", "RESTORE: koSize=" + koSize + ", repechage=" + repechage + ", modus=" + restoredModus);
-            koRepechage = repechage;
-            koModus = restoredModus;
-            koNrPart = koSize; // Set local nrPart from backup
-            
-            // Load participant names from Merged_backup.csv
             loadParticipantNamesFromMerged();
-            
-            // Reload KO tree structure
-            loadKOTree(koSize, koRepechage);
-            
-            android.util.Log.d("KOFragment", "RESTORE: koRounds.size()=" + koRounds.size() + ", lines to restore=" + lines.size());
-            
-            // Apply saved scores and participants
-            for (String l : lines) {
-                String[] parts = l.split(",");
-                if (parts.length < 5) continue;
-                try {
-                    int roundNum = Integer.parseInt(parts[0].trim()) - 1; // 0-indexed
-                    int matchNum = Integer.parseInt(parts[1].trim()) - 1; // 0-indexed
-                    String p1 = parts[2].trim();
-                    String scoreStr1 = parts[3].trim();
-                    String p2 = parts[4].trim();
-                    String scoreStr2 = parts.length > 5 ? parts[5].trim() : "";
-                    
-                    android.util.Log.d("KOFragment", "RESTORE LINE: round=" + roundNum + " match=" + matchNum + " p1=" + p1 + " p2=" + p2 + " s1=" + scoreStr1 + " s2=" + scoreStr2);
-                    
-                    if (roundNum >= 0 && roundNum < koRounds.size()) {
-                        List<Match> round = koRounds.get(roundNum);
-                        for (Match m : round) {
-                            if (m.matchIdx == matchNum) {
-                                m.p1 = p1;
-                                m.p2 = p2;
-                                m.score1 = scoreStr1.isEmpty() ? -1 : Integer.parseInt(scoreStr1);
-                                m.score2 = scoreStr2.isEmpty() ? -1 : Integer.parseInt(scoreStr2);
-                                // Set winner based on scores
-                                if (m.score1 > m.score2) {
-                                    m.winner = p1;
-                                } else if (m.score2 > m.score1) {
-                                    m.winner = p2;
-                                } else {
-                                    m.winner = null;
-                                }
-                                android.util.Log.d("KOFragment", "RESTORE APPLIED: m.p1=" + m.p1 + " m.p2=" + m.p2);
-                                break;
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    android.util.Log.e("KOFragment", "RESTORE ERROR: " + e.getMessage());
-                }
-            }
-            
-            // Log Round 1 state after restore
-            if (!koRounds.isEmpty()) {
-                android.util.Log.d("KOFragment", "RESTORE COMPLETE - Round 1 matches:");
-                for (Match m : koRounds.get(0)) {
-                    android.util.Log.d("KOFragment", "  Match " + m.matchIdx + ": p1=" + m.p1 + " p2=" + m.p2 + " s1=" + m.score1 + " s2=" + m.score2);
-                }
-            }
-            
-            // Update spinner state to match restored modus
-            if (modusSpinnerRef != null) {
-                modusSpinnerRef.setOnItemSelectedListener(null);
-                modusSpinnerRef.setSelection(koModus);
-                setupModusSpinner(modusSpinnerRef, koBoxLayout);
-                modusSpinnerRef.setSelection(koModus);
-            }
-            
-            // Auto-advance Empty matches and propagate
-            String[] participantNames = getKOParticipantNames();
-            if (participantNames != null) {
-                autoAdvanceEmptyMatches(participantNames);
-                if (koRepechage && !losersRounds.isEmpty()) {
-                    propagateLosersToLosersBracket(participantNames);
-                    autoAdvanceEmptyMatchesInLosersBracket(participantNames);
-                }
-            }
-            propagateKOWinners();
-            renderKOTable(koBoxLayout);
-            Toast.makeText(getContext(), "Restored from KO_backup.csv", Toast.LENGTH_LONG).show();
-            
+            processRestoredMatches(lines);
+            if (explicit) Toast.makeText(requireContext(), "KO backup restored", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(getContext(), "Failed to restore: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            android.util.Log.e("KOFragment", "Cannot restore KO backup", e);
+            Toast.makeText(requireContext(), "Cannot restore KO backup: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
-    
-    // Auto-backup KO tree to KO_backup.csv in app private Documents
+
     private void backupKOTree() {
+        if (com.fencing.scores.MainActivity.cleanExitInProgress) return;
+        java.nio.file.Path target = new File(requireContext().getFilesDir(), "KO_backup.csv").toPath();
+        java.nio.file.Path temp = target.resolveSibling("KO_backup.csv.tmp");
         try {
-            File filesDir = requireContext().getFilesDir();
-            File backupFile = new File(filesDir, "KO_backup.csv");
-            FileWriter writer = new FileWriter(backupFile, false);
-            // Write metadata line with koSize, repechage state, and koModus
-            int koSize = koRounds.isEmpty() ? 8 : koRounds.get(0).size() * 2;
-            writer.write("#META," + koSize + "," + koRepechage + "," + koModus + "\n");
-            writer.write("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
-            android.util.Log.d("KOFragment", "BACKUP: koRounds.size()=" + koRounds.size() + ", koSize=" + koSize + ", repechage=" + koRepechage + ", modus=" + koModus);
-            
-            if (koModus >= 2 && !koGroups.isEmpty()) {
-                // Write group data for Quick KO / Mix-Rounds modes
-                for (KOGroup group : koGroups) {
-                    for (int r = 0; r < group.rounds.size(); r++) {
-                        for (Match m : group.rounds.get(r)) {
-                            String p1 = m.p1;
-                            String p2 = m.p2;
-                            String winner = "";
-                            if (m.score1 >= 0 && m.score2 >= 0) {
-                                winner = (m.score1 > m.score2) ? p1 : (m.score2 > m.score1 ? p2 : "");
-                            }
-                            String line = group.groupId+","+(r+1)+","+(m.matchIdx+1)+","+p1+","+(m.score1>=0?m.score1:"")+","+p2+","+(m.score2>=0?m.score2:"")+","+winner;
-                            writer.write(line + "\n");
-                        }
-                    }
-                }
-            } else {
-            // Write main bracket (R1)
-            for (int r = 0; r < koRounds.size(); r++) {
-                android.util.Log.d("KOFragment", "BACKUP: Round " + r + " has " + koRounds.get(r).size() + " matches");
-                for (Match m : koRounds.get(r)) {
-                    String p1 = m.p1;
-                    String p2 = m.p2;
-                    String winner = (m.score1 > m.score2) ? p1 : (m.score2 > m.score1 ? p2 : "");
-                    String line = "R1,"+(r+1)+","+(m.matchIdx+1)+","+p1+","+(m.score1>=0?m.score1:"")+","+p2+","+(m.score2>=0?m.score2:"")+","+winner;
-                    android.util.Log.d("KOFragment", "BACKUP LINE: " + line);
-                    writer.write(line + "\n");
-                }
-            }
-            
-            // Write repechage trees if enabled
-            if (koRepechage && !allRepechageTrees.isEmpty()) {
-                for (RepechageTree tree : allRepechageTrees) {
-                    if (tree.treeId.equals("R1")) continue;
-                    
-                    for (int r = 0; r < tree.rounds.size(); r++) {
-                        for (Match m : tree.rounds.get(r)) {
-                            String p1 = m.p1;
-                            String p2 = m.p2;
-                            String winner = "";
-                            if (m.score1 >= 0 && m.score2 >= 0) {
-                                winner = (m.score1 > m.score2) ? p1 : (m.score2 > m.score1 ? p2 : "");
-                            }
-                            String line = tree.treeId+","+(r+1)+","+(m.matchIdx+1)+","+p1+","+(m.score1>=0?m.score1:"")+","+p2+","+(m.score2>=0?m.score2:"")+","+winner;
-                            writer.write(line + "\n");
-                        }
-                    }
-                }
-            }
-            } // end else (standard KO modes)
-            
-            writer.close();
-        } catch (Exception e) { 
-            android.util.Log.e("KOFragment", "BACKUP ERROR: " + e.getMessage());
+            java.nio.file.Files.write(temp, generateKOCsvData().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.io.IOException e) {
+            android.util.Log.e("KOFragment", "Cannot save session", e);
+            Toast.makeText(requireContext(), "KO session could not be saved", Toast.LENGTH_LONG).show();
         }
     }
-    
+
     // ========== REPLACE: Load KO state from selected CSV file ==========
     
     private void loadKOFromCsvUri(Uri uri) {
@@ -5662,6 +5455,7 @@ public class KOFragment extends Fragment {
             processRestoredMatches(lines);
             
             Toast.makeText(getContext(), "KO state loaded from file", Toast.LENGTH_LONG).show();
+            backupKOTree();
         } catch (Exception e) {
             android.util.Log.e("KOFragment", "REPLACE ERROR: " + e.getMessage());
             Toast.makeText(getContext(), "Error loading KO file: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -5725,12 +5519,55 @@ public class KOFragment extends Fragment {
     }
     
     // Generate KO data CSV string for QR code (same format as backup)
+    private static String packNames(String[] names) {
+        return android.util.Base64.encodeToString(new org.json.JSONArray(java.util.Arrays.asList(names))
+            .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+    }
+
+    private static String[] unpackNames(String encoded) {
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(new String(android.util.Base64.decode(encoded,
+                android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8));
+            String[] names = new String[array.length()];
+            for (int i = 0; i < names.length; i++) names[i] = array.isNull(i) ? "" : array.getString(i);
+            return names;
+        } catch (org.json.JSONException e) {
+            throw new IllegalArgumentException("Invalid KO roster", e);
+        }
+    }
+
+    private String snapshotRoster() {
+        StringBuilder metadata = new StringBuilder();
+        String[] names = getKOParticipantNames();
+        if (names != null) metadata.append("#ROSTER,").append(packNames(names)).append('\n');
+        originalNames.forEach((name, original) -> metadata.append("#ALIAS,")
+            .append(packNames(new String[]{name, original})).append('\n'));
+        for (KOGroup g : koGroups) {
+            metadata.append("#GROUP,").append(g.groupId).append(',').append(g.positionStart).append(',')
+                .append(g.positionEnd).append(',').append(g.title).append(',').append(packNames(g.participants)).append('\n');
+        }
+        return metadata.toString();
+    }
+
+    private void restoreSavedGroups(List<String> lines) {
+        for (String line : lines) {
+            if (!line.startsWith("#GROUP,")) continue;
+            String[] parts = line.split(",", 6);
+            KOGroup group = new KOGroup(parts[1], parts[4], Integer.parseInt(parts[2]),
+                Integer.parseInt(parts[3]), unpackNames(parts[5]));
+            koGroups.add(group);
+            buildGroupKOTree(group);
+        }
+    }
+
     private String generateKOCsvData() {
         StringBuilder csv = new StringBuilder();
         // Write metadata line with koSize, repechage state, and koModus
         int koSize = koRounds.isEmpty() ? 8 : koRounds.get(0).size() * 2;
+        if (koModus >= 2) koSize = koGroups.stream().mapToInt(g -> g.participants.length).sum();
         csv.append("#META," + koSize + "," + koRepechage + "," + koModus + "\n");
         csv.append("Tree,Round,Match,Participant1,Score1,Participant2,Score2,Winner\n");
+        csv.append(snapshotRoster());
         
         if (koModus >= 2 && !koGroups.isEmpty()) {
             // Write group data for Quick KO / Mix-Rounds modes
@@ -5812,34 +5649,12 @@ public class KOFragment extends Fragment {
         android.app.Dialog dialog = new android.app.Dialog(getContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         
-        // Create horizontal layout with vertical label + QR code
-        LinearLayout container = new LinearLayout(getContext());
-        container.setOrientation(LinearLayout.HORIZONTAL);
-        container.setBackgroundColor(Color.WHITE);
-        container.setGravity(Gravity.CENTER);
-        
-        // Vertical label showing modus name on the left
-        TextView label = new TextView(getContext());
-        label.setText(KO_MODUS_LABELS[koModus]);
-        label.setTextColor(0xFF333333);
-        label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 24);
-        label.setTypeface(null, android.graphics.Typeface.BOLD);
-        label.setRotation(-90);
-        label.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        labelParams.gravity = Gravity.CENTER;
-        label.setLayoutParams(labelParams);
-        container.addView(label);
-        
         android.widget.ImageView imageView = new android.widget.ImageView(getContext());
-        imageView.setImageBitmap(qrBitmap);
-        imageView.setScaleType(android.widget.ImageView.ScaleType.CENTER);
-        container.addView(imageView);
-        
-        container.setOnClickListener(v -> dialog.dismiss());
-        
-        dialog.setContentView(container);
+        imageView.setImageBitmap(new QrCaption(KO_MODUS_LABELS[koModus]).beside(qrBitmap));
+        imageView.setBackgroundColor(Color.WHITE);
+        imageView.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        imageView.setOnClickListener(v -> dialog.dismiss());
+        dialog.setContentView(imageView);
         dialog.getWindow().setLayout(
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
             android.view.WindowManager.LayoutParams.MATCH_PARENT
@@ -5931,6 +5746,7 @@ public class KOFragment extends Fragment {
             
             // Process matches from QR data (same format as backup)
             processRestoredMatches(lineList);
+            backupKOTree();
             
             Toast.makeText(getContext(), "KO data imported from QR", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
@@ -6012,6 +5828,16 @@ public class KOFragment extends Fragment {
         }
         
         // Setup state
+        String[] savedRoster = null;
+        originalNames.clear();
+        for (String line : lines) {
+            if (line.startsWith("#ROSTER,")) savedRoster = unpackNames(line.substring(8));
+            if (line.startsWith("#ALIAS,")) {
+                String[] pair = unpackNames(line.substring(7));
+                originalNames.put(pair[0], pair[1]);
+            }
+        }
+        if (savedRoster != null) koParticipantNames = savedRoster;
         koRepechage = repechageEnabled;
         koModus = restoredModus;
         
@@ -6024,28 +5850,9 @@ public class KOFragment extends Fragment {
         }
         
         if (koModus >= 2) {
-            // Quick KO or Mix-Rounds: try to rebuild groups from Merged, fall back to CSV data
             koGroups.clear();
-            loadParticipantNamesFromMerged();
-            java.util.List<String[]> mergedData = loadMergedParticipantData();
-            boolean builtFromMerged = false;
-            if (mergedData != null && !mergedData.isEmpty()) {
-                if (koModus >= 2 && koModus <= 4) {
-                    buildQuickKOGroups(mergedData);
-                } else {
-                    buildMixRoundsGroups(mergedData);
-                }
-                if (!koGroups.isEmpty()) {
-                    builtFromMerged = true;
-                    for (KOGroup group : koGroups) {
-                        buildGroupKOTree(group);
-                    }
-                }
-            }
-            if (!builtFromMerged) {
-                // Rebuild groups directly from CSV lines
-                rebuildGroupsFromCsvLines(lines);
-            }
+            restoreSavedGroups(lines);
+            if (koGroups.isEmpty()) rebuildGroupsFromCsvLines(lines);
             if (!koGroups.isEmpty()) {
                 // Apply match data from lines to groups
                 for (String line : lines) {
@@ -6096,7 +5903,7 @@ public class KOFragment extends Fragment {
             }
         } else {
         // Standard KO / Repechage: load tree and apply scores
-        initializeParticipantsFromImportedKOLines(lines, koSize);
+        if (savedRoster == null) initializeParticipantsFromImportedKOLines(lines, koSize);
         int koInputParticipants = (koParticipantNames != null && koParticipantNames.length > 0)
             ? koParticipantNames.length : koSize;
         koNrPart = koInputParticipants;

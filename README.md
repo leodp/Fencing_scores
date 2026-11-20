@@ -5,10 +5,10 @@ A comprehensive Android application for managing fencing tournament scores, from
 ## Installation
 
 ### F-Droid (Recommended)
-Coming soon to F-Droid - the official Free and Open Source Android app repository.
+[Download Fencing Scores from F-Droid](https://f-droid.org/packages/com.fencing.scores/).
 
-### Development Branch
-Version 2.26 is being prepared on the [`development/2.26`](https://github.com/leodp/Fencing_scores/tree/development/2.26) branch. It contains unreleased changes and local test builds; the official release branch remains `main`.
+### Current Release
+Version 2.27 (`versionCode 17`) is the current official release on [`main`](https://github.com/leodp/Fencing_scores/tree/main). Tagged releases are available from GitHub Releases; F-Droid discovers tagged releases automatically from this repository.
 
 ### GitHub Releases
 Download the latest APK directly from [GitHub Releases](https://github.com/leodp/Fencing_scores/releases)
@@ -23,9 +23,9 @@ See [Building the Project](#building-the-project) section below.
 - **Merged rankings**: Combine results from multiple pools
 - **Knockout bracket**: Standard or repechage elimination brackets
 - **Final rankings**: Consolidated tournament results
-- **QR code data transfer**: Share data between devices
+- **QR code data transfer**: Share data between devices. The image shows a vertical caption (`Pool Results`, `MergedRanking`, or the KO mode) followed by the local export time in `YYYY.MM.DD HH:mm:ss` format. The caption is outside the QR code and does not change the imported data.
 - **Round documentation exports**: Export calculated P positions in CSV and QR data
-- **Auto-backup**: Crash recovery for all pages
+- **Session persistence**: Rounds, Merged, and the selected KO mode/results resume on reopening; Help → QUIT starts clean
 - **Touch-friendly interface**: Rounded buttons, easy score entry
 
 ## Pages Overview
@@ -35,14 +35,14 @@ See [Building the Project](#building-the-project) section below.
 - Automatic calculation of V (victories), → (given), ← (received), I (index), % (win rate), P (position)
 - Each Round page is independent and can use the same participants, different participants, or partial overlaps in different order
 - Bout order suggestions
-- Help dialog with LOAD, RESTORE, SAVE, QR OUT, QR IN, QUIT buttons
+- Help dialog with LOAD CSV, SAVE CSV, RESTORE crash, LOAD QR, SAVE QR, and QUIT
 - Color-coded result columns (cycling themes)
 - Highlighting missing bouts when 25% or less results are missing
 
 ### Merged (Rankings Combination)
 - Combine results from multiple pools
 - Split table view (left/right rankings)
-- Buttons: RELOAD round, REPLACE, ADD, RESTORE crash, QR OUT, QR ADD, SAVE
+- Buttons: RELOAD Rounds, CSV Load, QR Load, CSV Add, QR Add, CSV Save, QR Save, RESTORE
 - Editable fields with automatic re-ranking
 - Grouping merge routine:
   - exact same participant sets are merged into one group
@@ -66,7 +66,7 @@ See [Building the Project](#building-the-project) section below.
   - **Mix-Rounds 1-4:1-4** — Groups of 4 P values
 - Automatic participant seeding from Merged rankings
 - Compact bracket layout with horizontal overlap when possible
-- Buttons: RELOAD, REPLACE, RESTORE CRASH, QR OUT, QR IN, SAVE
+- Toolbar: KO mode, RELOAD, CSV Load, QR Load, CSV Save, QR Save, RESTORE
 - Support for 8, 16, 32, 64 participant brackets (auto-padded with Empty)
 - Color themes synced with Round page
 - Repechage reference handling keeps winner/loser names aligned even when some matches are still unplayed (strict winner-ref matching, unresolved refs remain placeholders)
@@ -200,4 +200,4 @@ The app icon features a fencer with an epee on a dark blue (#001582) background,
 
 ## Version
 
-Current release: **V2.25** — See [CHANGELOG.md](CHANGELOG.md) for full history.
+Current release: **V2.27** — See [CHANGELOG.md](CHANGELOG.md) for full history.

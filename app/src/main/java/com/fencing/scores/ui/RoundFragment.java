@@ -1249,25 +1249,27 @@ public class RoundFragment extends Fragment {
         }
         
         // Set button texts
-        loadBtn.setText("LOAD");
-        restoreBtn.setText("RESTORE");
-        saveBtn.setText("SAVE");
-        qrOutBtn.setText("QR OUT");
-        qrInBtn.setText("QR IN");
+        loadBtn.setText("LOAD CSV");
+        restoreBtn.setAllCaps(false);
+        restoreBtn.setText("RESTORE crash");
+        saveBtn.setText("SAVE CSV");
+        qrOutBtn.setText("SAVE QR");
+        qrInBtn.setText("LOAD QR");
         quitBtn.setText("QUIT");
         
-        // Set colors - QUIT is red, all others blue
-        int blueColor = 0xFF1976D2;
+        // Match the Save actions on the Merged page.
+        int blueColor = requireContext().getColor(R.color.action_button_blue);
         int redColor = 0xFFD32F2F;
+        int saveColor = 0xFFFFD800;
         
         setRoundedBackground(loadBtn, blueColor);
         loadBtn.setTextColor(Color.WHITE);
         setRoundedBackground(restoreBtn, blueColor);
         restoreBtn.setTextColor(Color.WHITE);
-        setRoundedBackground(saveBtn, blueColor);
-        saveBtn.setTextColor(Color.WHITE);
-        setRoundedBackground(qrOutBtn, blueColor);
-        qrOutBtn.setTextColor(Color.WHITE);
+        setRoundedBackground(saveBtn, saveColor);
+        saveBtn.setTextColor(Color.BLACK);
+        setRoundedBackground(qrOutBtn, saveColor);
+        qrOutBtn.setTextColor(Color.BLACK);
         setRoundedBackground(qrInBtn, blueColor);
         qrInBtn.setTextColor(Color.WHITE);
         setRoundedBackground(quitBtn, redColor);
@@ -1275,48 +1277,16 @@ public class RoundFragment extends Fragment {
         quitBtn.setTypeface(null, android.graphics.Typeface.BOLD);
         
         // Layout params for grid items
-        android.widget.GridLayout.LayoutParams paramLoad = new android.widget.GridLayout.LayoutParams();
-        paramLoad.columnSpec = android.widget.GridLayout.spec(0);
-        paramLoad.rowSpec = android.widget.GridLayout.spec(0);
-        paramLoad.setMargins(4, 4, 4, 4);
-        loadBtn.setLayoutParams(paramLoad);
-        
-        android.widget.GridLayout.LayoutParams paramRestore = new android.widget.GridLayout.LayoutParams();
-        paramRestore.columnSpec = android.widget.GridLayout.spec(1);
-        paramRestore.rowSpec = android.widget.GridLayout.spec(0);
-        paramRestore.setMargins(4, 4, 4, 4);
-        restoreBtn.setLayoutParams(paramRestore);
-        
-        android.widget.GridLayout.LayoutParams paramSave = new android.widget.GridLayout.LayoutParams();
-        paramSave.columnSpec = android.widget.GridLayout.spec(2);
-        paramSave.rowSpec = android.widget.GridLayout.spec(0);
-        paramSave.setMargins(4, 4, 24, 4); // More margin on right for visibility
-        saveBtn.setLayoutParams(paramSave);
-        
-        android.widget.GridLayout.LayoutParams paramQrOut = new android.widget.GridLayout.LayoutParams();
-        paramQrOut.columnSpec = android.widget.GridLayout.spec(0);
-        paramQrOut.rowSpec = android.widget.GridLayout.spec(1);
-        paramQrOut.setMargins(4, 4, 4, 4);
-        qrOutBtn.setLayoutParams(paramQrOut);
-        
-        android.widget.GridLayout.LayoutParams paramQrIn = new android.widget.GridLayout.LayoutParams();
-        paramQrIn.columnSpec = android.widget.GridLayout.spec(1);
-        paramQrIn.rowSpec = android.widget.GridLayout.spec(1);
-        paramQrIn.setMargins(4, 4, 4, 4);
-        qrInBtn.setLayoutParams(paramQrIn);
-        
-        android.widget.GridLayout.LayoutParams paramQuit = new android.widget.GridLayout.LayoutParams();
-        paramQuit.columnSpec = android.widget.GridLayout.spec(2);
-        paramQuit.rowSpec = android.widget.GridLayout.spec(1);
-        paramQuit.setMargins(4, 4, 24, 4); // More margin on right for visibility
-        quitBtn.setLayoutParams(paramQuit);
-        
-        buttonGrid.addView(loadBtn);
-        buttonGrid.addView(restoreBtn);
-        buttonGrid.addView(saveBtn);
-        buttonGrid.addView(qrOutBtn);
-        buttonGrid.addView(qrInBtn);
-        buttonGrid.addView(quitBtn);
+        android.widget.Button[] buttons = {loadBtn, saveBtn, restoreBtn, qrInBtn, qrOutBtn, quitBtn};
+        for (int i = 0; i < buttons.length; i++) {
+            android.widget.GridLayout.LayoutParams cell = new android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(i / 3), android.widget.GridLayout.spec(i % 3, 1f));
+            cell.width = 0;
+            cell.setMargins(4, 4, 4, 4);
+            buttons[i].setMinWidth(0);
+            buttons[i].setPadding(2, 0, 2, 0);
+            buttonGrid.addView(buttons[i], cell);
+        }
         layout.addView(buttonGrid);
         android.widget.TextView helpText = new android.widget.TextView(getContext());
         helpText.setPadding(10, 10, 10, 10);
@@ -2292,7 +2262,7 @@ public class RoundFragment extends Fragment {
         if (compositeBitmap != null) {
             showQrCodeFullscreen(compositeBitmap);
         } else {
-            showQrCodeFullscreen(qrBitmap);
+            showQrCodeFullscreen(new QrCaption("Pool Results").beside(qrBitmap));
         }
     }
     
@@ -2327,27 +2297,21 @@ public class RoundFragment extends Fragment {
             alphaPaint.setAlpha(80); // semi-transparent background
             canvas.drawBitmap(scaledTable, 0, 0, alphaPaint);
             
-            // Calculate center of bout matrix area (skip Nr and Name columns)
-            int nrPart = scoresViewModel.getNrPart().getValue() != null ? scoresViewModel.getNrPart().getValue() : ScoresViewModel.DEFAULT_PARTICIPANTS;
-            // The bout matrix starts at column 2 and spans nrPart columns out of (nrPart + 8) total
-            float totalCols = nrPart + 8;
-            float matrixStartFrac = 2f / totalCols;
-            float matrixEndFrac = (2f + nrPart) / totalCols;
-            int matrixCenterX = (int) (w * (matrixStartFrac + matrixEndFrac) / 2);
-            int matrixCenterY = h / 2;
-            
-            // Scale QR to fit nicely (95% of screen height)
-            int qrDisplaySize = (int) (h * 0.95f);
-            android.graphics.Bitmap scaledQr = android.graphics.Bitmap.createScaledBitmap(qrBitmap, qrDisplaySize, qrDisplaySize, true);
-            
-            // Draw QR code centered on the matrix area
-            int qrLeft = matrixCenterX - qrDisplaySize / 2;
-            int qrTop = matrixCenterY - qrDisplaySize / 2;
-            canvas.drawBitmap(scaledQr, qrLeft, qrTop, null);
+            TableRow header = (TableRow) tableLayout.getChildAt(0);
+            View name = header.getChildAt(1);
+            View percent = header.getChildAt(header.getChildCount() - 2);
+            float scaleX = w / (float) tableLayout.getWidth();
+            int left = (int) Math.ceil((header.getLeft() + name.getRight()) * scaleX);
+            int right = (int) Math.floor((header.getLeft() + percent.getLeft()) * scaleX);
+            int strip = Math.min(right - left, (int) (h * 0.95f)) / 7;
+            int size = Math.min((int) (h * 0.95f), right - left - strip);
+            if (size <= 0) throw new IllegalStateException("No space between Name and % for QR overlay");
+            int captionLeft = left + (right - left - strip - size) / 2;
+            int qrTop = (h - size) / 2;
+            new QrCaption("Pool Results").draw(canvas, qrBitmap, captionLeft, qrTop, strip, size);
             
             tableBitmap.recycle();
             scaledTable.recycle();
-            scaledQr.recycle();
             
             return composite;
         } catch (Exception e) {
@@ -2364,7 +2328,7 @@ public class RoundFragment extends Fragment {
         
         android.widget.ImageView imageView = new android.widget.ImageView(getContext());
         imageView.setImageBitmap(qrBitmap);
-        imageView.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        imageView.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
         imageView.setBackgroundColor(Color.WHITE);
         imageView.setOnClickListener(v -> dialog.dismiss());
         

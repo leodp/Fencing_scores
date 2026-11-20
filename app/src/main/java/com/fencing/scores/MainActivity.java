@@ -249,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
 
         viewPager = findViewById(R.id.viewPager);
         scoresViewModel = new ViewModelProvider(this).get(ScoresViewModel.class);
-        if (crashDetected) {
+        if (savedInstanceState == null || scoresViewModel.getNrRounds().getValue() == 1) {
             int recoveredRounds = detectRoundCountFromBackups();
             if (recoveredRounds > 1) {
                 scoresViewModel.setNrRounds(recoveredRounds);
